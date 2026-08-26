@@ -3,7 +3,6 @@ const CATEGORIES = [
   { id: "estudio", name: "Estudiar", pts: 10 },
   { id: "ejercicio", name: "Ejercicio", pts: 15 },
   { id: "lectura", name: "Leer", pts: 8 },
-  { id: "sincelu", name: "Sin celular", pts: 12 },
   { id: "creativo", name: "Proyecto creativo", pts: 14 },
   { id: "personal", name: "Proyecto personal", pts: 14 },
   { id: "nada", name: "No hacer nada", pts: 9 },
@@ -33,13 +32,15 @@ function seedPosts() {
     { id: "p2", userId: "u3", catId: "creativo", pts: 14, ts: now - day * 0.6, votes: { u1: "up" }, photos: [], desc: "" },
     { id: "p3", userId: "u1", catId: "estudio", pts: 10, ts: now - day * 1.1, votes: { u2: "up", u3: "up" }, photos: [], desc: "" },
     { id: "p4", userId: "u2", catId: "nada", pts: 9, ts: now - day * 1.5, votes: { u1: "up", u3: "up" }, photos: [], desc: "" },
-    { id: "p5", userId: "u3", catId: "sincelu", pts: 12, ts: now - day * 2.2, votes: {}, photos: [], desc: "" },
   ];
 }
 
 function save() {
   localStorage.setItem("insta_inv_state", JSON.stringify(state));
 }
+
+// saca posts guardados de categorías que ya no existen
+state.posts = state.posts.filter(p => CATEGORIES.some(c => c.id === p.catId));
 
 function escapeHtml(str) {
   const d = document.createElement("div");
