@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="insta⁻¹">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>insta⁻¹</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wordmark">insta<sup>-1</sup></div>
+  <div class="streak-pill" id="myStreakPill">🔥 0 días</div>
+</div>
+
+<!-- FEED -->
+<section class="screen active" id="screen-feed">
+  <div class="season-banner">
+    <div>
+      <div class="label">temporada</div>
+      <div class="value" id="seasonLabel">agosto 2026</div>
+    </div>
+    <div class="days-left">
+      <div class="label">quedan</div>
+      <div class="value" id="daysLeft">6 días</div>
+    </div>
+  </div>
+  <div class="section-title">Actividad del grupo</div>
+  <div id="feedList"></div>
+</section>
+
+<!-- RANKING -->
+<section class="screen" id="screen-ranking">
+  <div class="section-title">Ranking · este mes</div>
+  <div id="rankList"></div>
+  <div class="section-title">Temporadas pasadas</div>
+  <div id="pastSeasons"></div>
+</section>
+
+<!-- PUBLICAR -->
+<section class="screen" id="screen-publish">
+  <div class="section-title">Elegí una categoría</div>
+  <div class="cat-grid" id="catGrid"></div>
+  <div class="section-title">Foto de prueba</div>
+  <div class="upload-box" id="uploadBox">
+    toca para sacar o elegir una foto
+    <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+  </div>
+  <button class="primary-btn" id="publishBtn" disabled>publicar</button>
+</section>
+
+<!-- PERFIL -->
+<section class="screen" id="screen-profile">
+  <div class="profile-head">
+    <div class="avatar" id="profileAvatar">·</div>
+    <div>
+      <div class="pname" id="profileName">-</div>
+      <div class="psub" id="profileSub">-</div>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="snum" id="statTotal">0</div><div class="slabel">puntos histórico</div></div>
+    <div class="stat-card"><div class="snum" id="statMonth">0</div><div class="slabel">este mes</div></div>
+    <div class="stat-card"><div class="snum" id="statStreak">0</div><div class="slabel">racha actual</div></div>
+  </div>
+  <div class="section-title">Elegí perfil (demo)</div>
+  <div class="cat-grid" id="userSwitcher"></div>
+  <div class="section-title">Bitácora</div>
+  <div id="timelineList"></div>
+</section>
+
+<div class="bottomnav">
+  <button class="navbtn active" data-screen="feed">
+    <span class="navicon">◱</span>feed
+  </button>
+  <button class="navbtn" data-screen="ranking">
+    <span class="navicon">◈</span>ranking
+  </button>
+  <button class="navbtn fab" data-screen="publish">
+    <span class="navicon">+</span>
+  </button>
+  <button class="navbtn" data-screen="profile">
+    <span class="navicon">◐</span>perfil
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
