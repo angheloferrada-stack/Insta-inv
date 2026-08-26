@@ -7,6 +7,7 @@ const CATEGORIES = [
   { id: "creativo", name: "Proyecto creativo", pts: 14 },
   { id: "personal", name: "Proyecto personal", pts: 14 },
   { id: "nada", name: "No hacer nada", pts: 9 },
+  { id: "monje", name: "Monje tibetano", pts: 40 },
 ];
 
 const DEFAULT_USERS = [
@@ -28,16 +29,22 @@ function seedPosts() {
   const now = Date.now();
   const day = 86400000;
   return [
-    { id: "p1", userId: "u2", catId: "ejercicio", pts: 15, ts: now - day * 0.3, votes: { u1: "up", u3: "up" } },
-    { id: "p2", userId: "u3", catId: "creativo", pts: 14, ts: now - day * 0.6, votes: { u1: "up" } },
-    { id: "p3", userId: "u1", catId: "estudio", pts: 10, ts: now - day * 1.1, votes: { u2: "up", u3: "up" } },
-    { id: "p4", userId: "u2", catId: "nada", pts: 9, ts: now - day * 1.5, votes: { u1: "up", u3: "up" } },
-    { id: "p5", userId: "u3", catId: "sincelu", pts: 12, ts: now - day * 2.2, votes: {} },
+    { id: "p1", userId: "u2", catId: "ejercicio", pts: 15, ts: now - day * 0.3, votes: { u1: "up", u3: "up" }, photos: [], desc: "" },
+    { id: "p2", userId: "u3", catId: "creativo", pts: 14, ts: now - day * 0.6, votes: { u1: "up" }, photos: [], desc: "" },
+    { id: "p3", userId: "u1", catId: "estudio", pts: 10, ts: now - day * 1.1, votes: { u2: "up", u3: "up" }, photos: [], desc: "" },
+    { id: "p4", userId: "u2", catId: "nada", pts: 9, ts: now - day * 1.5, votes: { u1: "up", u3: "up" }, photos: [], desc: "" },
+    { id: "p5", userId: "u3", catId: "sincelu", pts: 12, ts: now - day * 2.2, votes: {}, photos: [], desc: "" },
   ];
 }
 
 function save() {
   localStorage.setItem("insta_inv_state", JSON.stringify(state));
+}
+
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
 }
 
 function catById(id) { return CATEGORIES.find(c => c.id === id); }
@@ -148,6 +155,10 @@ function renderFeed() {
     const myVote = p.votes[state.currentUser];
     const isMine = p.userId === state.currentUser;
     const restNote = p.catId === "nada" ? `<div class="rest-note">el descanso también cuenta.</div>` : "";
+    const photos = p.photos && p.photos.length
+      ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map(src => `<img src="${src}" alt="foto de prueba">`).join("")}</div>`
+      : `<div class="post-photo">sin foto</div>`;
+    const desc = p.desc ? `<div class="post-desc">${escapeHtml(p.desc)}</div>` : "";
     return `
     <div class="post-card">
       <div class="post-head">
@@ -158,7 +169,8 @@ function renderFeed() {
         </div>
         <div class="cat-tag">${cat.name}</div>
       </div>
-      <div class="post-photo">foto de prueba</div>
+      ${photos}
+      ${desc}
       ${restNote}
       <div class="post-foot">
         <div class="points-badge">${approved ? "+" + p.pts : "pendiente"} pts</div>
@@ -213,13 +225,21 @@ function renderRanking() {
 
 // ---------- render: publicar ----------
 let selectedCat = null;
-let pendingPhoto = null;
+let pendingPhotos = [];
+
+function fileToDataUrl(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
+}
 
 function renderPublish() {
   selectedCat = null;
-  pendingPhoto = null;
-  document.getElementById("uploadBox").innerHTML = `toca para sacar o elegir una foto<input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">`;
-  document.getElementById("uploadBox").classList.remove("has-photo");
+  pendingPhotos = [];
+  document.getElementById("descInput").value = "";
+  renderPhotoGrid();
   bindPublishEvents();
   document.getElementById("catGrid").innerHTML = CATEGORIES.map(c => `
     <button class="cat-choice" data-cat="${c.id}">
@@ -237,25 +257,45 @@ function renderPublish() {
   checkPublishReady();
 }
 
+function renderPhotoGrid() {
+  const grid = document.getElementById("photoGrid");
+  grid.innerHTML = pendingPhotos.map((src, i) => `
+    <div class="photo-thumb">
+      <img src="${src}" alt="foto ${i + 1}">
+      <button class="photo-remove" data-idx="${i}">✕</button>
+    </div>`).join("") + `
+    <button class="photo-add" id="addPhotoBtn">+</button>`;
+
+  grid.querySelectorAll(".photo-remove").forEach(btn => {
+    btn.addEventListener("click", () => {
+      pendingPhotos.splice(Number(btn.dataset.idx), 1);
+      renderPhotoGrid();
+      checkPublishReady();
+    });
+  });
+  document.getElementById("addPhotoBtn").addEventListener("click", () => {
+    document.getElementById("fileInput").click();
+  });
+}
+
 function bindPublishEvents() {
-  const box = document.getElementById("uploadBox");
-  box.addEventListener("click", () => document.getElementById("fileInput").click());
-  document.getElementById("fileInput").addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    pendingPhoto = true;
-    box.classList.add("has-photo");
-    box.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="foto de prueba">`;
+  document.getElementById("fileInput").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    for (const file of files) {
+      pendingPhotos.push(await fileToDataUrl(file));
+    }
+    e.target.value = "";
+    renderPhotoGrid();
     checkPublishReady();
   });
 }
 
 function checkPublishReady() {
-  document.getElementById("publishBtn").disabled = !(selectedCat && pendingPhoto);
+  document.getElementById("publishBtn").disabled = !(selectedCat && pendingPhotos.length > 0);
 }
 
 document.getElementById("publishBtn").addEventListener("click", () => {
-  if (!selectedCat || !pendingPhoto) return;
+  if (!selectedCat || !pendingPhotos.length) return;
   const cat = catById(selectedCat);
   state.posts.unshift({
     id: "p" + Date.now(),
@@ -264,6 +304,8 @@ document.getElementById("publishBtn").addEventListener("click", () => {
     pts: cat.pts,
     ts: Date.now(),
     votes: {},
+    photos: [...pendingPhotos],
+    desc: document.getElementById("descInput").value.trim(),
   });
   save();
   toast("publicado. a esperar aprobación 👀");
