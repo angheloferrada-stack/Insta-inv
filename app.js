@@ -10,9 +10,17 @@ const CATEGORIES = [
 ];
 
 const DEFAULT_USERS = [
-  { id: "u1", name: "Vos" },
-  { id: "u2", name: "Mica" },
-  { id: "u3", name: "Fede" },
+  { id: "u1", name: "prueba" },
+  { id: "u2", name: "anghelo" },
+  { id: "u3", name: "barbi" },
+];
+
+// combos: si en el mismo día subís posts aprobados de estas 2 categorías,
+// el total de puntos de ese día se multiplica
+const COMBOS = [
+  { cats: ["monje", "nada"], mult: 1.3, label: "Retiro real" },
+  { cats: ["estudio", "lectura"], mult: 1.2, label: "Brain mode" },
+  { cats: ["ejercicio", "personal"], mult: 1.25, label: "Cuerpo + proyecto" },
 ];
 
 const MONTH_NAMES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -28,10 +36,10 @@ function seedPosts() {
   const now = Date.now();
   const day = 86400000;
   return [
-    { id: "p1", userId: "u2", catId: "ejercicio", pts: 15, ts: now - day * 0.3, votes: { u1: "up", u3: "up" }, photos: [], desc: "" },
-    { id: "p2", userId: "u3", catId: "creativo", pts: 14, ts: now - day * 0.6, votes: { u1: "up" }, photos: [], desc: "" },
-    { id: "p3", userId: "u1", catId: "estudio", pts: 10, ts: now - day * 1.1, votes: { u2: "up", u3: "up" }, photos: [], desc: "" },
-    { id: "p4", userId: "u2", catId: "nada", pts: 9, ts: now - day * 1.5, votes: { u1: "up", u3: "up" }, photos: [], desc: "" },
+    { id: "p1", userId: "u2", catId: "ejercicio", pts: 15, ts: now - day * 0.3, votes: { u1: "up", u3: "up" }, photos: [], desc: "", comments: [] },
+    { id: "p2", userId: "u3", catId: "creativo", pts: 14, ts: now - day * 0.6, votes: { u1: "up" }, photos: [], desc: "", comments: [{ userId: "u1", text: "qué buena idea!", ts: now - day * 0.5 }] },
+    { id: "p3", userId: "u1", catId: "estudio", pts: 10, ts: now - day * 1.1, votes: { u2: "up", u3: "up" }, photos: [], desc: "", comments: [] },
+    { id: "p4", userId: "u2", catId: "nada", pts: 9, ts: now - day * 1.5, votes: { u1: "up", u3: "up" }, photos: [], desc: "", comments: [] },
   ];
 }
 
@@ -77,16 +85,55 @@ function isApproved(post) {
   return approvalsCount(post) >= 1;
 }
 
+// ---------- combos ----------
+function dayKey(ts) { return new Date(ts).toDateString(); }
+
+function comboForCats(catIds) {
+  const set = new Set(catIds);
+  let best = null;
+  for (const combo of COMBOS) {
+    if (combo.cats.every(c => set.has(c))) {
+      if (!best || combo.mult > best.mult) best = combo;
+    }
+  }
+  return best;
+}
+
+// puntos base -> puntos reales por día, agrupando y aplicando combo si corresponde
+function dailyTotalsForUser(userId) {
+  const byDay = {};
+  state.posts
+    .filter(p => p.userId === userId && isApproved(p))
+    .forEach(p => {
+      const k = dayKey(p.ts);
+      if (!byDay[k]) byDay[k] = { posts: [], base: 0, ts: p.ts };
+      byDay[k].posts.push(p);
+      byDay[k].base += p.pts;
+    });
+  Object.values(byDay).forEach(d => {
+    const combo = comboForCats(d.posts.map(p => p.catId));
+    d.combo = combo;
+    d.total = combo ? Math.round(d.base * combo.mult) : d.base;
+  });
+  return byDay;
+}
+
+function comboActiveForPost(post) {
+  const byDay = dailyTotalsForUser(post.userId);
+  const d = byDay[dayKey(post.ts)];
+  return d ? d.combo : null;
+}
+
 // ---------- puntos y racha ----------
 function pointsForUserInSeason(userId, key) {
-  return state.posts
-    .filter(p => p.userId === userId && seasonKey(p.ts) === key && isApproved(p))
-    .reduce((sum, p) => sum + p.pts, 0);
+  const byDay = dailyTotalsForUser(userId);
+  return Object.values(byDay)
+    .filter(d => seasonKey(d.ts) === key)
+    .reduce((sum, d) => sum + d.total, 0);
 }
 function totalPointsForUser(userId) {
-  return state.posts
-    .filter(p => p.userId === userId && isApproved(p))
-    .reduce((sum, p) => sum + p.pts, 0);
+  const byDay = dailyTotalsForUser(userId);
+  return Object.values(byDay).reduce((sum, d) => sum + d.total, 0);
 }
 function currentStreak(userId) {
   const days = new Set(
@@ -160,6 +207,14 @@ function renderFeed() {
       ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map(src => `<img src="${src}" alt="foto de prueba">`).join("")}</div>`
       : `<div class="post-photo">sin foto</div>`;
     const desc = p.desc ? `<div class="post-desc">${escapeHtml(p.desc)}</div>` : "";
+    const combo = approved ? comboActiveForPost(p) : null;
+    const comboTag = combo ? `<div class="combo-tag">🔗 combo ${combo.label} ×${combo.mult}</div>` : "";
+    const comments = p.comments || [];
+    const commentsHtml = comments.map(c => `
+      <div class="comment-row">
+        <span class="comment-name">${userById(c.userId)?.name || "?"}</span>
+        <span class="comment-text">${escapeHtml(c.text)}</span>
+      </div>`).join("");
     return `
     <div class="post-card">
       <div class="post-head">
@@ -173,6 +228,7 @@ function renderFeed() {
       ${photos}
       ${desc}
       ${restNote}
+      ${comboTag}
       <div class="post-foot">
         <div class="points-badge">${approved ? "+" + p.pts : "pendiente"} pts</div>
         ${isMine
@@ -183,8 +239,35 @@ function renderFeed() {
             </div>`
         }
       </div>
+      <div class="comments-block">
+        ${commentsHtml}
+        <div class="comment-input-row">
+          <input type="text" class="comment-input" placeholder="comentar..." data-post="${p.id}">
+          <button class="comment-send" data-post="${p.id}">enviar</button>
+        </div>
+      </div>
     </div>`;
   }).join("");
+
+  list.querySelectorAll(".comment-send").forEach(btn => {
+    btn.addEventListener("click", () => submitComment(btn.dataset.post));
+  });
+  list.querySelectorAll(".comment-input").forEach(input => {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") submitComment(input.dataset.post);
+    });
+  });
+}
+
+function submitComment(postId) {
+  const input = document.querySelector(`.comment-input[data-post="${postId}"]`);
+  const text = input.value.trim();
+  if (!text) return;
+  const post = state.posts.find(p => p.id === postId);
+  if (!post.comments) post.comments = [];
+  post.comments.push({ userId: state.currentUser, text, ts: Date.now() });
+  save();
+  renderFeed();
 }
 
 function vote(postId, val) {
@@ -242,6 +325,11 @@ function renderPublish() {
   document.getElementById("descInput").value = "";
   renderPhotoGrid();
   bindPublishEvents();
+  document.getElementById("comboInfo").innerHTML = COMBOS.map(c => `
+    <div class="combo-info-row">
+      <span>${c.cats.map(id => catById(id).name).join(" + ")}</span>
+      <span class="combo-info-mult">×${c.mult}</span>
+    </div>`).join("");
   document.getElementById("catGrid").innerHTML = CATEGORIES.map(c => `
     <button class="cat-choice" data-cat="${c.id}">
       <div class="cname">${c.name}</div>
