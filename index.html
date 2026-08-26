@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="insta⁻¹">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>insta⁻¹</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -47,11 +47,13 @@
 <section class="screen" id="screen-publish">
   <div class="section-title">Elegí una categoría</div>
   <div class="cat-grid" id="catGrid"></div>
-  <div class="section-title">Foto de prueba</div>
-  <div class="upload-box" id="uploadBox">
-    toca para sacar o elegir una foto
-    <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
-  </div>
+  <div class="section-title">Foto(s) de prueba</div>
+  <div class="photo-grid" id="photoGrid"></div>
+  <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+
+  <div class="section-title">Descripción (opcional)</div>
+  <textarea class="desc-input" id="descInput" placeholder="contá algo sobre esto..." rows="3"></textarea>
+
   <button class="primary-btn" id="publishBtn" disabled>publicar</button>
 </section>
 
