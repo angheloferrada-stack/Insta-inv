@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   getFirestore, collection, addDoc, onSnapshot, doc, updateDoc,
-  query, orderBy,
+  query, orderBy, where, getDocs,
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -17,6 +17,7 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 const postsCol = collection(db, "posts");
+const usersCol = collection(db, "users");
 
 // ---------- datos base ----------
 const CATEGORIES = [
@@ -29,11 +30,7 @@ const CATEGORIES = [
   { id: "monje", name: "Monje tibetano", pts: 40 },
 ];
 
-const DEFAULT_USERS = [
-  { id: "u1", name: "Anghelo" },
-  { id: "u2", name: "Mica" },
-  { id: "u3", name: "Fede" },
-];
+const DEFAULT_USERS = [];
 
 const MONTH_NAMES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
@@ -66,25 +63,95 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
-// ---------- identidad (quién sos) ----------
-function initWhoami() {
+async function hashPassword(pass) {
+  const enc = new TextEncoder().encode("insta-inv-salt::" + pass);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// ---------- identidad (cómo te llamai) ----------
+async function initWhoami() {
   const overlay = document.getElementById("whoamiOverlay");
-  if (state.currentUser) {
+  if (state.currentUser && userById(state.currentUser)) {
     overlay.classList.add("hidden");
     return;
   }
+  overlay.classList.remove("hidden");
+  renderWhoamiForm();
+}
+
+function renderWhoamiForm() {
   const list = document.getElementById("whoamiList");
-  list.innerHTML = state.users.map(u => `
-    <button class="whoami-choice" data-id="${u.id}">${u.name}</button>`).join("") +
-    `<div class="sync-note">esto queda guardado en este celular</div>`;
-  list.querySelectorAll(".whoami-choice").forEach(btn => {
+  const others = state.users.length
+    ? `<div class="whoami-others">
+        <div class="whoami-others-label">ya están en el grupo:</div>
+        ${state.users.map(u => `<button class="whoami-choice small" data-name="${escapeHtml(u.name)}">${escapeHtml(u.name)}</button>`).join("")}
+      </div>`
+    : "";
+  list.innerHTML = `
+    <input type="text" id="whoamiInput" class="whoami-input" placeholder="tu nombre" maxlength="20">
+    <input type="password" id="whoamiPass" class="whoami-input" placeholder="tu contraseña" maxlength="40">
+    <div class="whoami-error" id="whoamiError"></div>
+    <button class="primary-btn" id="whoamiSubmit">entrar</button>
+    <div class="whoami-hint">si es tu primera vez, esa contraseña te va a quedar para siempre. no la pierdas.</div>
+    ${others}
+    <div class="sync-note">esto queda guardado en este celular</div>
+  `;
+  document.getElementById("whoamiSubmit").addEventListener("click", submitWhoami);
+  document.getElementById("whoamiPass").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submitWhoami();
+  });
+  list.querySelectorAll(".whoami-choice[data-name]").forEach(btn => {
     btn.addEventListener("click", () => {
-      state.currentUser = btn.dataset.id;
-      localStorage.setItem("insta_inv_whoami", state.currentUser);
-      overlay.classList.add("hidden");
-      showScreen("feed");
+      document.getElementById("whoamiInput").value = btn.dataset.name;
+      document.getElementById("whoamiPass").focus();
     });
   });
+}
+
+async function submitWhoami() {
+  const nameInput = document.getElementById("whoamiInput");
+  const passInput = document.getElementById("whoamiPass");
+  const errorBox = document.getElementById("whoamiError");
+  const name = nameInput.value.trim();
+  const pass = passInput.value;
+  errorBox.textContent = "";
+
+  if (!name) { nameInput.focus(); return; }
+  if (!pass) { passInput.focus(); return; }
+
+  const btn = document.getElementById("whoamiSubmit");
+  btn.disabled = true;
+  btn.textContent = "un toque...";
+
+  try {
+    const passHash = await hashPassword(pass);
+    const existing = state.users.find(u => u.name.toLowerCase() === name.toLowerCase());
+
+    if (existing) {
+      if (existing.passHash !== passHash) {
+        errorBox.textContent = "esa contraseña no es. probá de nuevo.";
+        btn.disabled = false;
+        btn.textContent = "entrar";
+        return;
+      }
+      setIdentity(existing.id);
+    } else {
+      const newDoc = await addDoc(usersCol, { name, passHash, ts: Date.now() });
+      setIdentity(newDoc.id);
+    }
+  } catch (err) {
+    toast("no resultó, revisa tu conexión");
+    btn.disabled = false;
+    btn.textContent = "entrar";
+  }
+}
+
+function setIdentity(id) {
+  state.currentUser = id;
+  localStorage.setItem("insta_inv_whoami", id);
+  document.getElementById("whoamiOverlay").classList.add("hidden");
+  showScreen("feed");
 }
 
 // ---------- temporada ----------
@@ -261,15 +328,15 @@ function renderFeed() {
         ${isMine
           ? `<div class="verify-status">${approvalsCount(p)} aprobación${approvalsCount(p) === 1 ? "" : "es"}</div>`
           : `<div class="verify-row">
-              <button class="vbtn approve ${myVote === "up" ? "active" : ""}" data-post="${p.id}" data-vote="up">✓ válido</button>
-              <button class="vbtn reject ${myVote === "down" ? "active" : ""}" data-post="${p.id}" data-vote="down">✕ dudoso</button>
+              <button class="vbtn approve ${myVote === "up" ? "active" : ""}" data-post="${p.id}" data-vote="up">✓ va</button>
+              <button class="vbtn reject ${myVote === "down" ? "active" : ""}" data-post="${p.id}" data-vote="down">✕ sospechoso</button>
             </div>`
         }
       </div>
       <div class="comments-block">
         ${commentsHtml}
         <div class="comment-input-row">
-          <input type="text" class="comment-input" placeholder="comentar..." data-post="${p.id}">
+          <input type="text" class="comment-input" placeholder="deja un comentario..." data-post="${p.id}">
           <button class="comment-send" data-post="${p.id}">enviar</button>
         </div>
       </div>
@@ -298,7 +365,7 @@ async function vote(postId, val) {
   try {
     await updateDoc(doc(db, "posts", postId), { votes });
   } catch (err) {
-    toast("no se pudo votar, revisá tu conexión");
+    toast("no se pudo votar, revisa tu conexión");
   }
 }
 
@@ -313,7 +380,7 @@ async function submitComment(postId) {
   try {
     await updateDoc(doc(db, "posts", postId), { comments });
   } catch (err) {
-    toast("no se pudo comentar, revisá tu conexión");
+    toast("no se pudo comentar, revisa tu conexión");
   }
 }
 
@@ -429,7 +496,7 @@ function bindPublishEvents() {
   const input = document.getElementById("fileInput");
   input.onchange = async (e) => {
     const files = Array.from(e.target.files || []);
-    if (files.length) toast("procesando fotos...");
+    if (files.length) toast("dale, procesando las fotos...");
     for (const file of files) {
       try {
         pendingPhotos.push(await fileToCompressedDataUrl(file));
@@ -462,10 +529,10 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
       desc: document.getElementById("descInput").value.trim(),
       comments: [],
     });
-    toast("publicado. a esperar aprobación 👀");
+    toast("subido. a esperar que te aprueben 👀");
     showScreen("feed");
   } catch (err) {
-    toast("no se pudo publicar, revisá tu conexión");
+    toast("no se pudo publicar, revisa tu conexión");
   } finally {
     btn.textContent = "publicar";
   }
@@ -499,7 +566,7 @@ function renderProfile() {
       <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
       <div class="tbody">
         <div class="ttitle">${cat.name}</div>
-        <div class="rank-streak">${approved ? "aprobado" : "pendiente de aprobación"}</div>
+        <div class="rank-streak">${approved ? "aprobado" : "pendiente"}</div>
       </div>
       <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
     </div>`;
@@ -507,8 +574,23 @@ function renderProfile() {
 }
 
 // ---------- init ----------
-initWhoami();
 showScreen("feed");
+
+const usersQuery = query(usersCol, orderBy("ts", "asc"));
+let whoamiChecked = false;
+onSnapshot(usersQuery, (snap) => {
+  state.users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (!whoamiChecked) {
+    whoamiChecked = true;
+    initWhoami();
+  } else if (document.getElementById("whoamiOverlay").classList.contains("hidden") === false) {
+    renderWhoamiForm();
+  }
+  const activeScreen = document.querySelector(".screen.active")?.id;
+  if (activeScreen === "screen-feed") renderFeed();
+  if (activeScreen === "screen-ranking") renderRanking();
+  if (activeScreen === "screen-profile") renderProfile();
+});
 
 const postsQuery = query(postsCol, orderBy("ts", "desc"));
 onSnapshot(postsQuery, (snap) => {
