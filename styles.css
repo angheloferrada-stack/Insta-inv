@@ -438,6 +438,46 @@ img { max-width: 100%; display: block; }
   padding: 40px 10px;
 }
 
+/* Whoami overlay */
+.whoami-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.whoami-overlay.hidden { display: none; }
+.whoami-box {
+  width: 100%;
+  max-width: 340px;
+  text-align: center;
+}
+.whoami-sub {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin-bottom: 24px;
+}
+.whoami-choice {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  background: var(--bg);
+  color: var(--ink);
+}
+.sync-note {
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-align: center;
+  margin-top: 16px;
+}
+
 .toast {
   position: fixed;
   bottom: 90px;
