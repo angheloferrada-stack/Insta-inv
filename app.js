@@ -21,13 +21,13 @@ const usersCol = collection(db, "users");
 
 // ---------- datos base ----------
 const CATEGORIES = [
-  { id: "estudio", name: "Estudiar", pts: 10 },
-  { id: "ejercicio", name: "Ejercicio", pts: 15 },
-  { id: "lectura", name: "Leer", pts: 8 },
-  { id: "creativo", name: "Proyecto creativo", pts: 14 },
-  { id: "personal", name: "Proyecto personal", pts: 14 },
-  { id: "nada", name: "No hacer nada", pts: 9 },
-  { id: "monje", name: "Monje tibetano", pts: 40 },
+  { id: "estudio", name: "Estudiar", pts: 10, desc: "Sesión real de estudio, mínimo 30 min." },
+  { id: "ejercicio", name: "Ejercicio", pts: 15, desc: "Entrenar, correr, deporte: mover el cuerpo en serio." },
+  { id: "lectura", name: "Leer", pts: 8, desc: "Lectura de libro o algo con sustancia, no redes." },
+  { id: "creativo", name: "Proyecto creativo", pts: 14, desc: "Avanzar en arte, música, escritura o lo que estés armando." },
+  { id: "personal", name: "Proyecto personal", pts: 14, desc: "Curso, negocio propio, side project: algo tuyo que construís." },
+  { id: "nada", name: "No hacer nada", pts: 9, desc: "Descanso real, sin celular ni pantallas." },
+  { id: "monje", name: "Monje tibetano", pts: 40, desc: "Máximo 30 min de uso de celular en 24 h. Sube el print de pantalla." },
 ];
 
 const DEFAULT_USERS = [];
@@ -44,6 +44,17 @@ const COMBOS = [
   { cats: ["ejercicio", "nada"], mult: 1.15, label: "Cuerpo y mente" },
   { cats: ["monje", "creativo"], mult: 1.25, label: "Mente clara" },
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
+];
+
+const APP_VERSION = "1.5";
+
+const CHANGELOG = [
+  { v: "1.5", changes: ["descripción de cada categoría", "pantalla de acerca de + changelog"] },
+  { v: "1.4", changes: ["contraseña por nombre para que nadie te robe la identidad"] },
+  { v: "1.3", changes: ["nombres personalizados en vez de lista fija", "textos ajustados al chileno"] },
+  { v: "1.2", changes: ["conexión en tiempo real con Firebase (feed, votos y comentarios compartidos)"] },
+  { v: "1.1", changes: ["combos: multiplicador de puntos por categorías del mismo día", "comentarios en los posts"] },
+  { v: "1.0", changes: ["categoría Monje tibetano", "varias fotos + descripción por post", "primera versión pública"] },
 ];
 
 // ---------- estado ----------
@@ -250,10 +261,13 @@ function showScreen(name) {
   if (name === "ranking") renderRanking();
   if (name === "profile") renderProfile();
   if (name === "publish") renderPublish();
+  if (name === "about") renderAbout();
 }
 document.querySelectorAll(".navbtn").forEach(btn => {
   btn.addEventListener("click", () => showScreen(btn.dataset.screen));
 });
+document.getElementById("aboutLink").addEventListener("click", () => showScreen("about"));
+document.getElementById("aboutBack").addEventListener("click", () => showScreen("profile"));
 
 // ---------- toast ----------
 function toast(msg) {
@@ -456,9 +470,10 @@ function renderPublish() {
       <span class="combo-info-mult">×${c.mult}</span>
     </div>`).join("");
   document.getElementById("catGrid").innerHTML = CATEGORIES.map(c => `
-    <button class="cat-choice" data-cat="${c.id}">
+    <button class="cat-choice" data-cat="${c.id}" title="${escapeHtml(c.desc)}">
       <div class="cname">${c.name}</div>
       <div class="cpts">${c.pts} pts</div>
+      <div class="cdesc">${escapeHtml(c.desc)}</div>
     </button>`).join("");
   document.querySelectorAll(".cat-choice").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -539,6 +554,26 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
 });
 
 // ---------- render: perfil ----------
+// ---------- render: acerca de ----------
+function renderAbout() {
+  document.getElementById("aboutVersion").textContent = `versión ${APP_VERSION}`;
+  document.getElementById("aboutCats").innerHTML = CATEGORIES.map(c => `
+    <div class="about-cat-row">
+      <div class="about-cat-head">
+        <span class="about-cat-name">${c.name}</span>
+        <span class="about-cat-pts">${c.pts} pts</span>
+      </div>
+      <div class="about-cat-desc">${escapeHtml(c.desc)}</div>
+    </div>`).join("");
+  document.getElementById("aboutChangelog").innerHTML = CHANGELOG.map(v => `
+    <div class="changelog-row">
+      <div class="changelog-v">v${v.v}</div>
+      <ul class="changelog-list">
+        ${v.changes.map(ch => `<li>${escapeHtml(ch)}</li>`).join("")}
+      </ul>
+    </div>`).join("");
+}
+
 function renderProfile() {
   const u = userById(state.currentUser);
   if (!u) return;
