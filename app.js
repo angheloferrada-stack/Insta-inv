@@ -1,3 +1,23 @@
+// ---------- firebase ----------
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, onSnapshot, doc, updateDoc,
+  query, orderBy,
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAo_WUWgf9Zb4dNBUkdSOQ29GTnHleF1Ik",
+  authDomain: "insta-inv.firebaseapp.com",
+  projectId: "insta-inv",
+  storageBucket: "insta-inv.firebasestorage.app",
+  messagingSenderId: "469488622220",
+  appId: "1:469488622220:web:586acfd23cf209bafcb9a9",
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const postsCol = collection(db, "posts");
+
 // ---------- datos base ----------
 const CATEGORIES = [
   { id: "estudio", name: "Estudiar", pts: 10 },
@@ -10,45 +30,35 @@ const CATEGORIES = [
 ];
 
 const DEFAULT_USERS = [
-  { id: "u1", name: "prueba" },
-  { id: "u2", name: "anghelo" },
-  { id: "u3", name: "barbi" },
-];
-
-// combos: si en el mismo día subís posts aprobados de estas 2 categorías,
-// el total de puntos de ese día se multiplica
-const COMBOS = [
-  { cats: ["monje", "nada"], mult: 1.3, label: "Retiro real" },
-  { cats: ["estudio", "lectura"], mult: 1.2, label: "Brain mode" },
-  { cats: ["ejercicio", "personal"], mult: 1.25, label: "Cuerpo + proyecto" },
+  { id: "u1", name: "Anghelo" },
+  { id: "u2", name: "Mica" },
+  { id: "u3", name: "Fede" },
 ];
 
 const MONTH_NAMES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 
+const COMBOS = [
+  { cats: ["monje", "nada"], mult: 1.3, label: "Retiro real" },
+  { cats: ["estudio", "lectura"], mult: 1.2, label: "Brain mode" },
+  { cats: ["ejercicio", "personal"], mult: 1.25, label: "Cuerpo + proyecto" },
+  { cats: ["creativo", "personal"], mult: 1.2, label: "Builder day" },
+  { cats: ["estudio", "personal"], mult: 1.2, label: "Aprendizaje aplicado" },
+  { cats: ["creativo", "lectura"], mult: 1.15, label: "Inspiración" },
+  { cats: ["ejercicio", "nada"], mult: 1.15, label: "Cuerpo y mente" },
+  { cats: ["monje", "creativo"], mult: 1.25, label: "Mente clara" },
+  { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
+];
+
 // ---------- estado ----------
-const state = JSON.parse(localStorage.getItem("insta_inv_state") || "null") || {
-  currentUser: "u1",
+const state = {
+  currentUser: localStorage.getItem("insta_inv_whoami") || null,
   users: DEFAULT_USERS,
-  posts: seedPosts(),
+  posts: [],
 };
 
-function seedPosts() {
-  const now = Date.now();
-  const day = 86400000;
-  return [
-    { id: "p1", userId: "u2", catId: "ejercicio", pts: 15, ts: now - day * 0.3, votes: { u1: "up", u3: "up" }, photos: [], desc: "", comments: [] },
-    { id: "p2", userId: "u3", catId: "creativo", pts: 14, ts: now - day * 0.6, votes: { u1: "up" }, photos: [], desc: "", comments: [{ userId: "u1", text: "qué buena idea!", ts: now - day * 0.5 }] },
-    { id: "p3", userId: "u1", catId: "estudio", pts: 10, ts: now - day * 1.1, votes: { u2: "up", u3: "up" }, photos: [], desc: "", comments: [] },
-    { id: "p4", userId: "u2", catId: "nada", pts: 9, ts: now - day * 1.5, votes: { u1: "up", u3: "up" }, photos: [], desc: "", comments: [] },
-  ];
-}
-
-function save() {
-  localStorage.setItem("insta_inv_state", JSON.stringify(state));
-}
-
-// saca posts guardados de categorías que ya no existen
-state.posts = state.posts.filter(p => CATEGORIES.some(c => c.id === p.catId));
+function catById(id) { return CATEGORIES.find(c => c.id === id); }
+function userById(id) { return state.users.find(u => u.id === id); }
+function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
 
 function escapeHtml(str) {
   const d = document.createElement("div");
@@ -56,9 +66,26 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
-function catById(id) { return CATEGORIES.find(c => c.id === id); }
-function userById(id) { return state.users.find(u => u.id === id); }
-function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
+// ---------- identidad (quién sos) ----------
+function initWhoami() {
+  const overlay = document.getElementById("whoamiOverlay");
+  if (state.currentUser) {
+    overlay.classList.add("hidden");
+    return;
+  }
+  const list = document.getElementById("whoamiList");
+  list.innerHTML = state.users.map(u => `
+    <button class="whoami-choice" data-id="${u.id}">${u.name}</button>`).join("") +
+    `<div class="sync-note">esto queda guardado en este celular</div>`;
+  list.querySelectorAll(".whoami-choice").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.currentUser = btn.dataset.id;
+      localStorage.setItem("insta_inv_whoami", state.currentUser);
+      overlay.classList.add("hidden");
+      showScreen("feed");
+    });
+  });
+}
 
 // ---------- temporada ----------
 function seasonKey(ts) {
@@ -78,10 +105,9 @@ function daysLeftInMonth() {
 
 // ---------- verificación ----------
 function approvalsCount(post) {
-  return Object.values(post.votes).filter(v => v === "up").length;
+  return Object.values(post.votes || {}).filter(v => v === "up").length;
 }
 function isApproved(post) {
-  // con grupo chico: 1 aprobación de otro usuario ya cuenta
   return approvalsCount(post) >= 1;
 }
 
@@ -99,7 +125,6 @@ function comboForCats(catIds) {
   return best;
 }
 
-// puntos base -> puntos reales por día, agrupando y aplicando combo si corresponde
 function dailyTotalsForUser(userId) {
   const byDay = {};
   state.posts
@@ -173,6 +198,7 @@ function toast(msg) {
 
 // ---------- render: topbar ----------
 function renderTopbar() {
+  if (!state.currentUser) return;
   document.getElementById("myStreakPill").textContent = `🔥 ${currentStreak(state.currentUser)} días`;
   document.getElementById("seasonLabel").textContent = seasonLabelFor(currentSeasonKey());
   document.getElementById("daysLeft").textContent = `${daysLeftInMonth()} días`;
@@ -198,9 +224,10 @@ function renderFeed() {
   }
   list.innerHTML = posts.map(p => {
     const u = userById(p.userId);
+    if (!u) return "";
     const cat = catById(p.catId);
     const approved = isApproved(p);
-    const myVote = p.votes[state.currentUser];
+    const myVote = (p.votes || {})[state.currentUser];
     const isMine = p.userId === state.currentUser;
     const restNote = p.catId === "nada" ? `<div class="rest-note">el descanso también cuenta.</div>` : "";
     const photos = p.photos && p.photos.length
@@ -234,8 +261,8 @@ function renderFeed() {
         ${isMine
           ? `<div class="verify-status">${approvalsCount(p)} aprobación${approvalsCount(p) === 1 ? "" : "es"}</div>`
           : `<div class="verify-row">
-              <button class="vbtn approve ${myVote === "up" ? "active" : ""}" onclick="vote('${p.id}','up')">✓ válido</button>
-              <button class="vbtn reject ${myVote === "down" ? "active" : ""}" onclick="vote('${p.id}','down')">✕ dudoso</button>
+              <button class="vbtn approve ${myVote === "up" ? "active" : ""}" data-post="${p.id}" data-vote="up">✓ válido</button>
+              <button class="vbtn reject ${myVote === "down" ? "active" : ""}" data-post="${p.id}" data-vote="down">✕ dudoso</button>
             </div>`
         }
       </div>
@@ -249,6 +276,9 @@ function renderFeed() {
     </div>`;
   }).join("");
 
+  list.querySelectorAll(".vbtn").forEach(btn => {
+    btn.addEventListener("click", () => vote(btn.dataset.post, btn.dataset.vote));
+  });
   list.querySelectorAll(".comment-send").forEach(btn => {
     btn.addEventListener("click", () => submitComment(btn.dataset.post));
   });
@@ -259,23 +289,32 @@ function renderFeed() {
   });
 }
 
-function submitComment(postId) {
+async function vote(postId, val) {
+  const post = state.posts.find(p => p.id === postId);
+  if (!post) return;
+  const votes = { ...(post.votes || {}) };
+  votes[state.currentUser] = votes[state.currentUser] === val ? undefined : val;
+  if (votes[state.currentUser] === undefined) delete votes[state.currentUser];
+  try {
+    await updateDoc(doc(db, "posts", postId), { votes });
+  } catch (err) {
+    toast("no se pudo votar, revisá tu conexión");
+  }
+}
+
+async function submitComment(postId) {
   const input = document.querySelector(`.comment-input[data-post="${postId}"]`);
   const text = input.value.trim();
   if (!text) return;
   const post = state.posts.find(p => p.id === postId);
-  if (!post.comments) post.comments = [];
-  post.comments.push({ userId: state.currentUser, text, ts: Date.now() });
-  save();
-  renderFeed();
-}
-
-function vote(postId, val) {
-  const post = state.posts.find(p => p.id === postId);
-  post.votes[state.currentUser] = post.votes[state.currentUser] === val ? undefined : val;
-  if (post.votes[state.currentUser] === undefined) delete post.votes[state.currentUser];
-  save();
-  renderFeed();
+  if (!post) return;
+  const comments = [...(post.comments || []), { userId: state.currentUser, text, ts: Date.now() }];
+  input.value = "";
+  try {
+    await updateDoc(doc(db, "posts", postId), { comments });
+  } catch (err) {
+    toast("no se pudo comentar, revisá tu conexión");
+  }
 }
 
 // ---------- render: ranking ----------
@@ -307,17 +346,36 @@ function renderRanking() {
   }).join("");
 }
 
-// ---------- render: publicar ----------
-let selectedCat = null;
-let pendingPhotos = [];
-
-function fileToDataUrl(file) {
-  return new Promise((resolve) => {
+// ---------- utilidad: comprimir foto antes de guardar ----------
+function fileToCompressedDataUrl(file, maxDim = 900, quality = 0.6) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
+    reader.onload = () => { img.src = reader.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > height && width > maxDim) {
+        height = Math.round(height * (maxDim / width));
+        width = maxDim;
+      } else if (height > maxDim) {
+        width = Math.round(width * (maxDim / height));
+        height = maxDim;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
+
+// ---------- render: publicar ----------
+let selectedCat = null;
+let pendingPhotos = [];
 
 function renderPublish() {
   selectedCat = null;
@@ -368,42 +426,55 @@ function renderPhotoGrid() {
 }
 
 function bindPublishEvents() {
-  document.getElementById("fileInput").addEventListener("change", async (e) => {
+  const input = document.getElementById("fileInput");
+  input.onchange = async (e) => {
     const files = Array.from(e.target.files || []);
+    if (files.length) toast("procesando fotos...");
     for (const file of files) {
-      pendingPhotos.push(await fileToDataUrl(file));
+      try {
+        pendingPhotos.push(await fileToCompressedDataUrl(file));
+      } catch (err) { /* ignore fallo de una foto */ }
     }
     e.target.value = "";
     renderPhotoGrid();
     checkPublishReady();
-  });
+  };
 }
 
 function checkPublishReady() {
   document.getElementById("publishBtn").disabled = !(selectedCat && pendingPhotos.length > 0);
 }
 
-document.getElementById("publishBtn").addEventListener("click", () => {
+document.getElementById("publishBtn").addEventListener("click", async () => {
   if (!selectedCat || !pendingPhotos.length) return;
   const cat = catById(selectedCat);
-  state.posts.unshift({
-    id: "p" + Date.now(),
-    userId: state.currentUser,
-    catId: cat.id,
-    pts: cat.pts,
-    ts: Date.now(),
-    votes: {},
-    photos: [...pendingPhotos],
-    desc: document.getElementById("descInput").value.trim(),
-  });
-  save();
-  toast("publicado. a esperar aprobación 👀");
-  showScreen("feed");
+  const btn = document.getElementById("publishBtn");
+  btn.disabled = true;
+  btn.textContent = "publicando...";
+  try {
+    await addDoc(postsCol, {
+      userId: state.currentUser,
+      catId: cat.id,
+      pts: cat.pts,
+      ts: Date.now(),
+      votes: {},
+      photos: pendingPhotos,
+      desc: document.getElementById("descInput").value.trim(),
+      comments: [],
+    });
+    toast("publicado. a esperar aprobación 👀");
+    showScreen("feed");
+  } catch (err) {
+    toast("no se pudo publicar, revisá tu conexión");
+  } finally {
+    btn.textContent = "publicar";
+  }
 });
 
 // ---------- render: perfil ----------
 function renderProfile() {
   const u = userById(state.currentUser);
+  if (!u) return;
   document.getElementById("profileAvatar").textContent = initials(u.name);
   document.getElementById("profileName").textContent = u.name;
   document.getElementById("profileSub").textContent = `${totalPointsForUser(u.id)} pts histórico`;
@@ -411,11 +482,7 @@ function renderProfile() {
   document.getElementById("statMonth").textContent = pointsForUserInSeason(u.id, currentSeasonKey());
   document.getElementById("statStreak").textContent = currentStreak(u.id);
 
-  document.getElementById("userSwitcher").innerHTML = state.users.map(usr => `
-    <button class="cat-choice ${usr.id === state.currentUser ? "selected" : ""}" onclick="switchUser('${usr.id}')">
-      <div class="cname">${usr.name}</div>
-      <div class="cpts">cambiar a este perfil</div>
-    </button>`).join("");
+  document.getElementById("userSwitcher").innerHTML = "";
 
   const mine = state.posts.filter(p => p.userId === state.currentUser).sort((a, b) => b.ts - a.ts);
   const list = document.getElementById("timelineList");
@@ -439,15 +506,20 @@ function renderProfile() {
   }).join("");
 }
 
-function switchUser(id) {
-  state.currentUser = id;
-  save();
-  renderProfile();
-  renderTopbar();
-}
-
 // ---------- init ----------
-renderFeed();
+initWhoami();
+showScreen("feed");
+
+const postsQuery = query(postsCol, orderBy("ts", "desc"));
+onSnapshot(postsQuery, (snap) => {
+  state.posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const activeScreen = document.querySelector(".screen.active")?.id;
+  if (activeScreen === "screen-feed") renderFeed();
+  if (activeScreen === "screen-ranking") renderRanking();
+  if (activeScreen === "screen-profile") renderProfile();
+}, (err) => {
+  toast("sin conexión con el servidor");
+});
 
 // ---------- service worker ----------
 if ("serviceWorker" in navigator) {
