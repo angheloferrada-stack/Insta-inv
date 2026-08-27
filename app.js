@@ -28,6 +28,7 @@ const CATEGORIES = [
   { id: "personal", name: "Proyecto personal", pts: 14, desc: "Curso, negocio propio, side project: algo tuyo que construís." },
   { id: "nada", name: "No hacer nada", pts: 9, desc: "Descanso real, sin celular ni pantallas." },
   { id: "monje", name: "Monje tibetano", pts: 40, desc: "Máximo 30 min de uso de celular en 24 h. Sube el print de pantalla." },
+  { id: "descanso", name: "Buen descanso", pts: 11, desc: "Dormirte temprano y levantarte temprano. Sube la hora de alarma o de despertar como prueba." },
 ];
 
 const DEFAULT_USERS = [];
@@ -46,9 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.6";
 
 const CHANGELOG = [
+  { v: "1.6", changes: ["categoría Buen descanso (dormir y despertar temprano)"] },
   { v: "1.5", changes: ["descripción de cada categoría", "pantalla de acerca de + changelog"] },
   { v: "1.4", changes: ["contraseña por nombre para que nadie te robe la identidad"] },
   { v: "1.3", changes: ["nombres personalizados en vez de lista fija", "textos ajustados al chileno"] },
