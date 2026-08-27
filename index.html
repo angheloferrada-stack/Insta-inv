@@ -14,6 +14,14 @@
 </head>
 <body>
 
+<div class="whoami-overlay" id="whoamiOverlay">
+  <div class="whoami-box">
+    <div class="wordmark" style="margin-bottom:6px">insta<sup>-1</sup></div>
+    <div class="whoami-sub">¿quién sos?</div>
+    <div id="whoamiList"></div>
+  </div>
+</div>
+
 <div class="topbar">
   <div class="wordmark">insta<sup>-1</sup></div>
   <div class="streak-pill" id="myStreakPill">🔥 0 días</div>
@@ -74,8 +82,6 @@
     <div class="stat-card"><div class="snum" id="statMonth">0</div><div class="slabel">este mes</div></div>
     <div class="stat-card"><div class="snum" id="statStreak">0</div><div class="slabel">racha actual</div></div>
   </div>
-  <div class="section-title">Elegí perfil (demo)</div>
-  <div class="cat-grid" id="userSwitcher"></div>
   <div class="section-title">Bitácora</div>
   <div id="timelineList"></div>
 </section>
@@ -97,6 +103,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
