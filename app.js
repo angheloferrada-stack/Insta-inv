@@ -47,9 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 
 const CHANGELOG = [
+  { v: "1.7", changes: ["se ve quién votó cada post y qué votó"] },
   { v: "1.6", changes: ["categoría Buen descanso (dormir y despertar temprano)"] },
   { v: "1.5", changes: ["descripción de cada categoría", "pantalla de acerca de + changelog"] },
   { v: "1.4", changes: ["contraseña por nombre para que nadie te robe la identidad"] },
@@ -189,6 +190,18 @@ function approvalsCount(post) {
 }
 function isApproved(post) {
   return approvalsCount(post) >= 1;
+}
+function voterList(post) {
+  const votes = post.votes || {};
+  const entries = Object.entries(votes);
+  if (!entries.length) return "";
+  const chips = entries.map(([uid, v]) => {
+    const name = userById(uid)?.name || "?";
+    const cls = v === "up" ? "up" : "down";
+    const icon = v === "up" ? "✓" : "✕";
+    return `<span class="voter-chip ${cls}">${icon} ${escapeHtml(name)}</span>`;
+  }).join("");
+  return `<div class="voter-list">${chips}</div>`;
 }
 
 // ---------- combos ----------
@@ -349,6 +362,7 @@ function renderFeed() {
             </div>`
         }
       </div>
+      ${voterList(p)}
       <div class="comments-block">
         ${commentsHtml}
         <div class="comment-input-row">
