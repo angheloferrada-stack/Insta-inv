@@ -47,9 +47,11 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.7";
+const APP_VERSION = "1.8";
 
 const CHANGELOG = [
+  { v: "1.8", changes: ["ahora se necesita mayoría de votos positivos para ganar los puntos, no solo 1 aprobación"] },
+  { v: "1.7.1", changes: ["arreglo: la bitácora no mostraba nada por un bug al sacar el selector de perfil demo"] },
   { v: "1.7", changes: ["se ve quién votó cada post y qué votó"] },
   { v: "1.6", changes: ["categoría Buen descanso (dormir y despertar temprano)"] },
   { v: "1.5", changes: ["descripción de cada categoría", "pantalla de acerca de + changelog"] },
@@ -188,8 +190,21 @@ function daysLeftInMonth() {
 function approvalsCount(post) {
   return Object.values(post.votes || {}).filter(v => v === "up").length;
 }
+function rejectionsCount(post) {
+  return Object.values(post.votes || {}).filter(v => v === "down").length;
+}
 function isApproved(post) {
-  return approvalsCount(post) >= 1;
+  const up = approvalsCount(post);
+  const down = rejectionsCount(post);
+  return up > 0 && up > down;
+}
+function statusLabel(post) {
+  const up = approvalsCount(post);
+  const down = rejectionsCount(post);
+  if (up === 0 && down === 0) return "pendiente";
+  if (up === down) return "empatado, falta un voto";
+  if (down > up) return "rechazado por mayoría";
+  return "pendiente";
 }
 function voterList(post) {
   const votes = post.votes || {};
@@ -353,7 +368,7 @@ function renderFeed() {
       ${restNote}
       ${comboTag}
       <div class="post-foot">
-        <div class="points-badge">${approved ? "+" + p.pts : "pendiente"} pts</div>
+        <div class="points-badge">${approved ? "+" + p.pts + " pts" : statusLabel(p)}</div>
         ${isMine
           ? `<div class="verify-status">${approvalsCount(p)} aprobación${approvalsCount(p) === 1 ? "" : "es"}</div>`
           : `<div class="verify-row">
@@ -600,8 +615,6 @@ function renderProfile() {
   document.getElementById("statMonth").textContent = pointsForUserInSeason(u.id, currentSeasonKey());
   document.getElementById("statStreak").textContent = currentStreak(u.id);
 
-  document.getElementById("userSwitcher").innerHTML = "";
-
   const mine = state.posts.filter(p => p.userId === state.currentUser).sort((a, b) => b.ts - a.ts);
   const list = document.getElementById("timelineList");
   if (!mine.length) {
@@ -617,7 +630,7 @@ function renderProfile() {
       <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
       <div class="tbody">
         <div class="ttitle">${cat.name}</div>
-        <div class="rank-streak">${approved ? "aprobado" : "pendiente"}</div>
+        <div class="rank-streak">${approved ? "aprobado" : statusLabel(p)}</div>
       </div>
       <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
     </div>`;
