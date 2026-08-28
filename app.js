@@ -47,9 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.8";
+const APP_VERSION = "1.9";
 
 const CHANGELOG = [
+  { v: "1.9", changes: ["foto de perfil: tócala en tu perfil para cambiarla"] },
   { v: "1.8", changes: ["ahora se necesita mayoría de votos positivos para ganar los puntos, no solo 1 aprobación"] },
   { v: "1.7.1", changes: ["arreglo: la bitácora no mostraba nada por un bug al sacar el selector de perfil demo"] },
   { v: "1.7", changes: ["se ve quién votó cada post y qué votó"] },
@@ -72,6 +73,11 @@ const state = {
 function catById(id) { return CATEGORIES.find(c => c.id === id); }
 function userById(id) { return state.users.find(u => u.id === id); }
 function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
+function avatarHtml(u, size) {
+  const cls = size ? `avatar ${size}` : "avatar";
+  if (u.avatar) return `<div class="${cls}" style="background-image:url('${u.avatar}')"></div>`;
+  return `<div class="${cls}">${initials(u.name)}</div>`;
+}
 
 function escapeHtml(str) {
   const d = document.createElement("div");
@@ -356,7 +362,7 @@ function renderFeed() {
     return `
     <div class="post-card">
       <div class="post-head">
-        <div class="avatar">${initials(u.name)}</div>
+        ${avatarHtml(u)}
         <div class="who">
           <div class="name">${u.name}</div>
           <div class="meta">${timeAgo(p.ts)}</div>
@@ -438,7 +444,7 @@ function renderRanking() {
   document.getElementById("rankList").innerHTML = rows.map((r, i) => `
     <div class="rank-row">
       <div class="rank-num">${i + 1}</div>
-      <div class="avatar">${initials(r.u.name)}</div>
+      ${avatarHtml(r.u)}
       <div class="rank-info">
         <div class="rank-name">${r.u.name}</div>
         <div class="rank-streak">racha: ${r.streak} días</div>
@@ -608,7 +614,14 @@ function renderAbout() {
 function renderProfile() {
   const u = userById(state.currentUser);
   if (!u) return;
-  document.getElementById("profileAvatar").textContent = initials(u.name);
+  const avatarBtn = document.getElementById("profileAvatar");
+  if (u.avatar) {
+    avatarBtn.style.backgroundImage = `url('${u.avatar}')`;
+    avatarBtn.innerHTML = `<span class="avatar-edit-badge">📷</span>`;
+  } else {
+    avatarBtn.style.backgroundImage = "";
+    avatarBtn.innerHTML = `${initials(u.name)}<span class="avatar-edit-badge">📷</span>`;
+  }
   document.getElementById("profileName").textContent = u.name;
   document.getElementById("profileSub").textContent = `${totalPointsForUser(u.id)} pts histórico`;
   document.getElementById("statTotal").textContent = totalPointsForUser(u.id);
@@ -636,6 +649,23 @@ function renderProfile() {
     </div>`;
   }).join("");
 }
+
+document.getElementById("profileAvatar").addEventListener("click", () => {
+  document.getElementById("avatarInput").click();
+});
+document.getElementById("avatarInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast("subiendo foto de perfil...");
+  try {
+    const dataUrl = await fileToCompressedDataUrl(file, 300, 0.7);
+    await updateDoc(doc(db, "users", state.currentUser), { avatar: dataUrl });
+    toast("listo, esa es tu nueva foto");
+  } catch (err) {
+    toast("no se pudo cambiar la foto, revisa tu conexión");
+  }
+  e.target.value = "";
+});
 
 // ---------- init ----------
 showScreen("feed");
