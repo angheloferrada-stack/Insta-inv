@@ -1,4 +1,4 @@
-const CACHE_NAME = "insta-inv-v8";
+const CACHE_NAME = "insta-inv-v9";
 const ASSETS = [
   "./index.html",
   "./styles.css",
