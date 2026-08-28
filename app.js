@@ -47,9 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.9";
+const APP_VERSION = "1.10";
 
 const CHANGELOG = [
+  { v: "1.10", changes: ["toca cualquier foto de un post para verla en grande"] },
   { v: "1.9", changes: ["foto de perfil: tócala en tu perfil para cambiarla"] },
   { v: "1.8", changes: ["ahora se necesita mayoría de votos positivos para ganar los puntos, no solo 1 aprobación"] },
   { v: "1.7.1", changes: ["arreglo: la bitácora no mostraba nada por un bug al sacar el selector de perfil demo"] },
@@ -348,7 +349,7 @@ function renderFeed() {
     const isMine = p.userId === state.currentUser;
     const restNote = p.catId === "nada" ? `<div class="rest-note">el descanso también cuenta.</div>` : "";
     const photos = p.photos && p.photos.length
-      ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map(src => `<img src="${src}" alt="foto de prueba">`).join("")}</div>`
+      ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map(src => `<img src="${src}" alt="foto de prueba" class="zoomable-photo">`).join("")}</div>`
       : `<div class="post-photo">sin foto</div>`;
     const desc = p.desc ? `<div class="post-desc">${escapeHtml(p.desc)}</div>` : "";
     const combo = approved ? comboActiveForPost(p) : null;
@@ -405,6 +406,18 @@ function renderFeed() {
       if (e.key === "Enter") submitComment(input.dataset.post);
     });
   });
+  list.querySelectorAll(".zoomable-photo").forEach(img => {
+    img.addEventListener("click", () => openLightbox(img.src));
+  });
+}
+
+function openLightbox(src) {
+  const box = document.getElementById("lightbox");
+  document.getElementById("lightboxImg").src = src;
+  box.classList.remove("hidden");
+}
+function closeLightbox() {
+  document.getElementById("lightbox").classList.add("hidden");
 }
 
 async function vote(postId, val) {
@@ -666,6 +679,8 @@ document.getElementById("avatarInput").addEventListener("change", async (e) => {
   }
   e.target.value = "";
 });
+
+document.getElementById("lightbox").addEventListener("click", closeLightbox);
 
 // ---------- init ----------
 showScreen("feed");
