@@ -21,12 +21,12 @@ const usersCol = collection(db, "users");
 
 // ---------- datos base ----------
 const CATEGORIES = [
-  { id: "estudio", name: "Estudiar", pts: 10, desc: "Sesión real de estudio, mínimo 30 min." },
-  { id: "ejercicio", name: "Ejercicio", pts: 15, desc: "Entrenar, correr, deporte: mover el cuerpo en serio." },
-  { id: "lectura", name: "Leer", pts: 8, desc: "Lectura de libro o algo con sustancia, no redes." },
-  { id: "creativo", name: "Proyecto creativo", pts: 14, desc: "Avanzar en arte, música, escritura o lo que estés armando." },
-  { id: "personal", name: "Proyecto personal", pts: 14, desc: "Curso, negocio propio, side project: algo tuyo que construís." },
-  { id: "nada", name: "No hacer nada", pts: 9, desc: "Descanso real, sin celular ni pantallas." },
+  { id: "estudio", name: "Estudiar", pts: 10, desc: "Sesión real de estudio, mínimo 30 min.", minMin: 30, bonusEvery: 15, maxBonus: 10 },
+  { id: "ejercicio", name: "Ejercicio", pts: 15, desc: "Entrenar, correr, deporte: mover el cuerpo en serio.", minMin: 20, bonusEvery: 15, maxBonus: 15 },
+  { id: "lectura", name: "Leer", pts: 8, desc: "Lectura de libro o algo con sustancia, no redes.", minMin: 30, bonusEvery: 10, maxBonus: 8 },
+  { id: "creativo", name: "Proyecto creativo", pts: 14, desc: "Avanzar en arte, música, escritura o lo que estés armando.", minMin: 30, bonusEvery: 20, maxBonus: 14 },
+  { id: "personal", name: "Proyecto personal", pts: 14, desc: "Curso, negocio propio, side project: algo tuyo que construís.", minMin: 30, bonusEvery: 20, maxBonus: 14 },
+  { id: "nada", name: "No hacer nada", pts: 9, desc: "Descanso real, sin celular ni pantallas.", minMin: 30, bonusEvery: 30, maxBonus: 9 },
   { id: "monje", name: "Monje tibetano", pts: 40, desc: "Máximo 30 min de uso de celular en 24 h. Sube el print de pantalla." },
   { id: "descanso", name: "Buen descanso", pts: 11, desc: "Dormirte temprano y levantarte temprano. Sube la hora de alarma o de despertar como prueba." },
 ];
@@ -47,10 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.10";
+const APP_VERSION = "1.11";
 
 const CHANGELOG = [
-  { v: "1.10", changes: ["toca cualquier foto de un post para verla en grande"] },
+  { v: "1.11", changes: ["puntos según el tiempo real de la actividad: mínimo para el puntaje base + bonus por cada tramo extra"] },
   { v: "1.9", changes: ["foto de perfil: tócala en tu perfil para cambiarla"] },
   { v: "1.8", changes: ["ahora se necesita mayoría de votos positivos para ganar los puntos, no solo 1 aprobación"] },
   { v: "1.7.1", changes: ["arreglo: la bitácora no mostraba nada por un bug al sacar el selector de perfil demo"] },
@@ -72,6 +72,12 @@ const state = {
 };
 
 function catById(id) { return CATEGORIES.find(c => c.id === id); }
+function ptsForDuration(cat, minutes) {
+  if (!cat.minMin) return cat.pts;
+  const extraMin = Math.max(0, minutes - cat.minMin);
+  const bonus = Math.min(Math.floor(extraMin / cat.bonusEvery), cat.maxBonus);
+  return cat.pts + bonus;
+}
 function userById(id) { return state.users.find(u => u.id === id); }
 function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
 function avatarHtml(u, size) {
@@ -349,7 +355,7 @@ function renderFeed() {
     const isMine = p.userId === state.currentUser;
     const restNote = p.catId === "nada" ? `<div class="rest-note">el descanso también cuenta.</div>` : "";
     const photos = p.photos && p.photos.length
-      ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map(src => `<img src="${src}" alt="foto de prueba" class="zoomable-photo">`).join("")}</div>`
+      ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map(src => `<img src="${src}" alt="foto de prueba">`).join("")}</div>`
       : `<div class="post-photo">sin foto</div>`;
     const desc = p.desc ? `<div class="post-desc">${escapeHtml(p.desc)}</div>` : "";
     const combo = approved ? comboActiveForPost(p) : null;
@@ -368,7 +374,7 @@ function renderFeed() {
           <div class="name">${u.name}</div>
           <div class="meta">${timeAgo(p.ts)}</div>
         </div>
-        <div class="cat-tag">${cat.name}</div>
+        <div class="cat-tag">${cat.name}${p.minutes ? ` · ${p.minutes} min` : ""}</div>
       </div>
       ${photos}
       ${desc}
@@ -406,18 +412,6 @@ function renderFeed() {
       if (e.key === "Enter") submitComment(input.dataset.post);
     });
   });
-  list.querySelectorAll(".zoomable-photo").forEach(img => {
-    img.addEventListener("click", () => openLightbox(img.src));
-  });
-}
-
-function openLightbox(src) {
-  const box = document.getElementById("lightbox");
-  document.getElementById("lightboxImg").src = src;
-  box.classList.remove("hidden");
-}
-function closeLightbox() {
-  document.getElementById("lightbox").classList.add("hidden");
 }
 
 async function vote(postId, val) {
@@ -530,10 +524,61 @@ function renderPublish() {
       document.querySelectorAll(".cat-choice").forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
       selectedCat = btn.dataset.cat;
+      renderDurationField();
       checkPublishReady();
     });
   });
+  renderDurationField();
   checkPublishReady();
+}
+
+function renderDurationField() {
+  const box = document.getElementById("durationBox");
+  const cat = catById(selectedCat);
+  if (!cat || !cat.minMin) {
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = `
+    <div class="section-title" style="margin-top:20px">¿Cuánto tiempo?</div>
+    <input type="number" id="durationInput" class="whoami-input" placeholder="minutos" min="1" style="text-align:left;padding-left:16px">
+    <div class="duration-hint" id="durationHint">
+      mínimo ${cat.minMin} min para los ${cat.pts} pts base. cada ${cat.bonusEvery} min extra suma 1 pt más (hasta +${cat.maxBonus}).
+    </div>
+  `;
+  document.getElementById("durationInput").addEventListener("input", () => {
+    updateDurationHint();
+    checkPublishReady();
+  });
+}
+
+function updateDurationHint() {
+  const cat = catById(selectedCat);
+  const hint = document.getElementById("durationHint");
+  const input = document.getElementById("durationInput");
+  if (!cat || !hint || !input) return;
+  const minutes = Number(input.value);
+  if (!minutes) {
+    hint.textContent = `mínimo ${cat.minMin} min para los ${cat.pts} pts base. cada ${cat.bonusEvery} min extra suma 1 pt más (hasta +${cat.maxBonus}).`;
+    hint.classList.remove("bad");
+    return;
+  }
+  if (minutes < cat.minMin) {
+    hint.textContent = `te faltan ${cat.minMin - minutes} min para llegar al mínimo (${cat.minMin} min).`;
+    hint.classList.add("bad");
+  } else {
+    const total = ptsForDuration(cat, minutes);
+    hint.textContent = `con ${minutes} min te quedan ${total} pts.`;
+    hint.classList.remove("bad");
+  }
+}
+
+function currentDurationValid() {
+  const cat = catById(selectedCat);
+  if (!cat || !cat.minMin) return true;
+  const input = document.getElementById("durationInput");
+  const minutes = Number(input?.value || 0);
+  return minutes >= cat.minMin;
 }
 
 function renderPhotoGrid() {
@@ -574,12 +619,15 @@ function bindPublishEvents() {
 }
 
 function checkPublishReady() {
-  document.getElementById("publishBtn").disabled = !(selectedCat && pendingPhotos.length > 0);
+  document.getElementById("publishBtn").disabled = !(selectedCat && pendingPhotos.length > 0 && currentDurationValid());
 }
 
 document.getElementById("publishBtn").addEventListener("click", async () => {
-  if (!selectedCat || !pendingPhotos.length) return;
+  if (!selectedCat || !pendingPhotos.length || !currentDurationValid()) return;
   const cat = catById(selectedCat);
+  const durationInput = document.getElementById("durationInput");
+  const minutes = cat.minMin ? Number(durationInput.value) : null;
+  const pts = cat.minMin ? ptsForDuration(cat, minutes) : cat.pts;
   const btn = document.getElementById("publishBtn");
   btn.disabled = true;
   btn.textContent = "publicando...";
@@ -587,7 +635,8 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
     await addDoc(postsCol, {
       userId: state.currentUser,
       catId: cat.id,
-      pts: cat.pts,
+      pts,
+      minutes: minutes || null,
       ts: Date.now(),
       votes: {},
       photos: pendingPhotos,
@@ -679,8 +728,6 @@ document.getElementById("avatarInput").addEventListener("change", async (e) => {
   }
   e.target.value = "";
 });
-
-document.getElementById("lightbox").addEventListener("click", closeLightbox);
 
 // ---------- init ----------
 showScreen("feed");
