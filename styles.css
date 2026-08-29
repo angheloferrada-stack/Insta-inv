@@ -361,6 +361,14 @@ img { max-width: 100%; display: block; }
 }
 .desc-input:focus { outline: none; border-color: var(--ink); }
 
+.duration-hint {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.duration-hint.bad { color: var(--danger); }
+
 .combo-info-row {
   display: flex;
   justify-content: space-between;
@@ -608,26 +616,6 @@ img { max-width: 100%; display: block; }
   color: var(--ink-soft);
   text-align: center;
   margin-top: 16px;
-}
-
-.zoomable-photo { cursor: zoom-in; }
-
-.lightbox {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.92);
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.lightbox.hidden { display: none; }
-.lightbox img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 8px;
 }
 
 .toast {
