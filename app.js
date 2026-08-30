@@ -1,7 +1,7 @@
 // ---------- firebase ----------
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, onSnapshot, doc, updateDoc,
+  getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
   query, orderBy, where, getDocs,
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
@@ -47,9 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.12";
+const APP_VERSION = "1.13";
 
 const CHANGELOG = [
+  { v: "1.13", changes: ["deslizar entre fotos de un mismo post en modo grande", "opción de eliminar tus propios posts"] },
   { v: "1.12", changes: ["toca cualquier foto de un post para verla en grande (arreglado, antes fallaba por caché desactualizado)"] },
   { v: "1.11", changes: ["puntos según el tiempo real de la actividad: mínimo para el puntaje base + bonus por cada tramo extra"] },
   { v: "1.9", changes: ["foto de perfil: tócala en tu perfil para cambiarla"] },
@@ -356,7 +357,7 @@ function renderFeed() {
     const isMine = p.userId === state.currentUser;
     const restNote = p.catId === "nada" ? `<div class="rest-note">el descanso también cuenta.</div>` : "";
     const photos = p.photos && p.photos.length
-      ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map(src => `<img src="${src}" alt="foto de prueba" class="zoomable-photo">`).join("")}</div>`
+      ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map((src, i) => `<img src="${src}" alt="foto de prueba" class="zoomable-photo" data-post="${p.id}" data-idx="${i}">`).join("")}</div>`
       : `<div class="post-photo">sin foto</div>`;
     const desc = p.desc ? `<div class="post-desc">${escapeHtml(p.desc)}</div>` : "";
     const combo = approved ? comboActiveForPost(p) : null;
@@ -391,6 +392,7 @@ function renderFeed() {
             </div>`
         }
       </div>
+      ${isMine ? `<button class="delete-post-btn" data-post="${p.id}">eliminar post</button>` : ""}
       ${voterList(p)}
       <div class="comments-block">
         ${commentsHtml}
@@ -414,17 +416,51 @@ function renderFeed() {
     });
   });
   list.querySelectorAll(".zoomable-photo").forEach(img => {
-    img.addEventListener("click", () => openLightbox(img.src));
+    img.addEventListener("click", () => {
+      const post = state.posts.find(p => p.id === img.dataset.post);
+      if (post) openLightbox(post.photos, Number(img.dataset.idx));
+    });
+  });
+  list.querySelectorAll(".delete-post-btn").forEach(btn => {
+    btn.addEventListener("click", () => deletePost(btn.dataset.post));
   });
 }
 
-function openLightbox(src) {
-  document.getElementById("lightboxImg").src = src;
+async function deletePost(postId) {
+  if (!confirm("¿Seguro que querés eliminar este post? No se puede deshacer.")) return;
+  try {
+    await deleteDoc(doc(db, "posts", postId));
+    toast("post eliminado");
+  } catch (err) {
+    toast("no se pudo eliminar, revisa tu conexión");
+  }
+}
+
+// ---------- lightbox ----------
+let lightboxPhotos = [];
+let lightboxIndex = 0;
+
+function openLightbox(photos, index) {
+  lightboxPhotos = photos || [];
+  lightboxIndex = index || 0;
+  renderLightbox();
   document.getElementById("lightbox").classList.remove("hidden");
 }
 function closeLightbox() {
   document.getElementById("lightbox").classList.add("hidden");
   document.getElementById("lightboxImg").src = "";
+}
+function renderLightbox() {
+  document.getElementById("lightboxImg").src = lightboxPhotos[lightboxIndex];
+  const multi = lightboxPhotos.length > 1;
+  document.getElementById("lightboxPrev").style.display = multi ? "flex" : "none";
+  document.getElementById("lightboxNext").style.display = multi ? "flex" : "none";
+  document.getElementById("lightboxCounter").textContent = multi ? `${lightboxIndex + 1} / ${lightboxPhotos.length}` : "";
+}
+function lightboxStep(delta) {
+  if (!lightboxPhotos.length) return;
+  lightboxIndex = (lightboxIndex + delta + lightboxPhotos.length) % lightboxPhotos.length;
+  renderLightbox();
 }
 
 async function vote(postId, val) {
@@ -743,6 +779,18 @@ document.getElementById("avatarInput").addEventListener("change", async (e) => {
 });
 
 document.getElementById("lightbox").addEventListener("click", closeLightbox);
+document.getElementById("lightboxPrev").addEventListener("click", (e) => { e.stopPropagation(); lightboxStep(-1); });
+document.getElementById("lightboxNext").addEventListener("click", (e) => { e.stopPropagation(); lightboxStep(1); });
+
+let touchStartX = null;
+const lightboxEl = document.getElementById("lightbox");
+lightboxEl.addEventListener("touchstart", (e) => { touchStartX = e.touches[0].clientX; });
+lightboxEl.addEventListener("touchend", (e) => {
+  if (touchStartX === null) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 40) lightboxStep(dx > 0 ? -1 : 1);
+  touchStartX = null;
+});
 
 // ---------- init ----------
 showScreen("feed");
