@@ -47,9 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.13";
+const APP_VERSION = "1.14";
 
 const CHANGELOG = [
+  { v: "1.14", changes: ["puntos por tiempo con rendimiento decreciente: los primeros puntos extra son baratos, después cuestan más minutos, para que no compense quedarse horas farmeando", "los posts viejos con minutos se recalculan solos con la regla nueva"] },
   { v: "1.13", changes: ["deslizar entre fotos de un mismo post en modo grande", "opción de eliminar tus propios posts"] },
   { v: "1.12", changes: ["toca cualquier foto de un post para verla en grande (arreglado, antes fallaba por caché desactualizado)"] },
   { v: "1.11", changes: ["puntos según el tiempo real de la actividad: mínimo para el puntaje base + bonus por cada tramo extra"] },
@@ -77,8 +78,19 @@ function catById(id) { return CATEGORIES.find(c => c.id === id); }
 function ptsForDuration(cat, minutes) {
   if (!cat.minMin) return cat.pts;
   const extraMin = Math.max(0, minutes - cat.minMin);
-  const bonus = Math.min(Math.floor(extraMin / cat.bonusEvery), cat.maxBonus);
-  return cat.pts + bonus;
+  return cat.pts + bonusPointsForExtraMinutes(extraMin, cat.bonusEvery, cat.maxBonus);
+}
+// primeros EASY_TIER puntos extra cuestan bonusEvery minutos c/u, después cuestan bonusEvery*SLOW_FACTOR
+const EASY_TIER = 3;
+const SLOW_FACTOR = 3;
+function bonusPointsForExtraMinutes(extraMin, bonusEvery, maxBonus) {
+  let pts = 0;
+  let remaining = extraMin;
+  for (let i = 1; i <= maxBonus; i++) {
+    const cost = i <= EASY_TIER ? bonusEvery : bonusEvery * SLOW_FACTOR;
+    if (remaining >= cost) { pts++; remaining -= cost; } else break;
+  }
+  return pts;
 }
 function userById(id) { return state.users.find(u => u.id === id); }
 function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
@@ -592,7 +604,7 @@ function renderDurationField() {
     <div class="section-title" style="margin-top:20px">¿Cuánto tiempo?</div>
     <input type="number" id="durationInput" class="whoami-input" placeholder="minutos" min="1" style="text-align:left;padding-left:16px">
     <div class="duration-hint" id="durationHint">
-      mínimo ${cat.minMin} min para los ${cat.pts} pts base. cada ${cat.bonusEvery} min extra suma 1 pt más (hasta +${cat.maxBonus}).
+      mínimo ${cat.minMin} min para los ${cat.pts} pts base. los primeros ${EASY_TIER} pts extra cuestan ${cat.bonusEvery} min c/u, después cuestan ${cat.bonusEvery * SLOW_FACTOR} min c/u (hasta +${cat.maxBonus}).
     </div>
   `;
   document.getElementById("durationInput").addEventListener("input", () => {
@@ -608,7 +620,7 @@ function updateDurationHint() {
   if (!cat || !hint || !input) return;
   const minutes = Number(input.value);
   if (!minutes) {
-    hint.textContent = `mínimo ${cat.minMin} min para los ${cat.pts} pts base. cada ${cat.bonusEvery} min extra suma 1 pt más (hasta +${cat.maxBonus}).`;
+    hint.textContent = `mínimo ${cat.minMin} min para los ${cat.pts} pts base. los primeros ${EASY_TIER} pts extra cuestan ${cat.bonusEvery} min c/u, después ${cat.bonusEvery * SLOW_FACTOR} min c/u (hasta +${cat.maxBonus}).`;
     hint.classList.remove("bad");
     return;
   }
@@ -792,8 +804,30 @@ lightboxEl.addEventListener("touchend", (e) => {
   touchStartX = null;
 });
 
+// ---------- migración: recalcular puntos de posts viejos con la nueva regla de duración ----------
+const PTS_RULE_VERSION = 2;
+async function migrateDurationPoints() {
+  try {
+    const snap = await getDocs(postsCol);
+    const updates = [];
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.ptsVersion === PTS_RULE_VERSION) return;
+      const cat = catById(data.catId);
+      if (!cat || !cat.minMin || !data.minutes) {
+        updates.push(updateDoc(doc(db, "posts", d.id), { ptsVersion: PTS_RULE_VERSION }));
+        return;
+      }
+      const newPts = ptsForDuration(cat, data.minutes);
+      updates.push(updateDoc(doc(db, "posts", d.id), { pts: newPts, ptsVersion: PTS_RULE_VERSION }));
+    });
+    if (updates.length) await Promise.all(updates);
+  } catch (err) { /* si falla, no pasa nada grave: se reintenta la próxima vez que alguien entre */ }
+}
+
 // ---------- init ----------
 showScreen("feed");
+migrateDurationPoints();
 
 const usersQuery = query(usersCol, orderBy("ts", "asc"));
 let whoamiChecked = false;
@@ -828,3 +862,4 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("service-worker.js").catch(() => {});
   });
 }
+
