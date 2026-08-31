@@ -21,12 +21,12 @@ const usersCol = collection(db, "users");
 
 // ---------- datos base ----------
 const CATEGORIES = [
-  { id: "estudio", name: "Estudiar", pts: 10, desc: "Sesión real de estudio, mínimo 30 min.", minMin: 30, bonusEvery: 15, maxBonus: 10 },
-  { id: "ejercicio", name: "Ejercicio", pts: 15, desc: "Entrenar, correr, deporte: mover el cuerpo en serio.", minMin: 20, bonusEvery: 15, maxBonus: 15 },
-  { id: "lectura", name: "Leer", pts: 8, desc: "Lectura de libro o algo con sustancia, no redes.", minMin: 30, bonusEvery: 10, maxBonus: 8 },
-  { id: "creativo", name: "Proyecto creativo", pts: 14, desc: "Avanzar en arte, música, escritura o lo que estés armando.", minMin: 30, bonusEvery: 20, maxBonus: 14 },
-  { id: "personal", name: "Proyecto personal", pts: 14, desc: "Curso, negocio propio, side project: algo tuyo que construís.", minMin: 30, bonusEvery: 20, maxBonus: 14 },
-  { id: "nada", name: "No hacer nada", pts: 9, desc: "Descanso real, sin celular ni pantallas.", minMin: 30, bonusEvery: 30, maxBonus: 9 },
+  { id: "estudio", name: "Estudiar", pts: 6, desc: "Sesión real de estudio, mínimo 15 min.", minMin: 15, bonusEvery: 15, maxBonus: 12 },
+  { id: "ejercicio", name: "Ejercicio", pts: 9, desc: "Entrenar, correr, deporte: mover el cuerpo en serio.", minMin: 15, bonusEvery: 15, maxBonus: 18 },
+  { id: "lectura", name: "Leer", pts: 5, desc: "Lectura de libro o algo con sustancia, no redes.", minMin: 15, bonusEvery: 10, maxBonus: 10 },
+  { id: "creativo", name: "Proyecto creativo", pts: 8, desc: "Avanzar en arte, música, escritura o lo que estés armando.", minMin: 15, bonusEvery: 20, maxBonus: 16 },
+  { id: "personal", name: "Proyecto personal", pts: 8, desc: "Curso, negocio propio, side project: algo tuyo que construís.", minMin: 15, bonusEvery: 20, maxBonus: 16 },
+  { id: "nada", name: "No hacer nada", pts: 5, desc: "Descanso real, sin celular ni pantallas.", minMin: 15, bonusEvery: 30, maxBonus: 10 },
   { id: "monje", name: "Monje tibetano", pts: 40, desc: "Máximo 30 min de uso de celular en 24 h. Sube el print de pantalla." },
   { id: "descanso", name: "Buen descanso", pts: 11, desc: "Dormirte temprano y levantarte temprano. Sube la hora de alarma o de despertar como prueba." },
 ];
@@ -47,9 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.14";
+const APP_VERSION = "1.15";
 
 const CHANGELOG = [
+  { v: "1.15", changes: ["mínimo de tiempo bajado a 15 min en todas las categorías por duración, con puntaje base más chico (se compensa con los bonus)"] },
   { v: "1.14", changes: ["puntos por tiempo con rendimiento decreciente: los primeros puntos extra son baratos, después cuestan más minutos, para que no compense quedarse horas farmeando", "los posts viejos con minutos se recalculan solos con la regla nueva"] },
   { v: "1.13", changes: ["deslizar entre fotos de un mismo post en modo grande", "opción de eliminar tus propios posts"] },
   { v: "1.12", changes: ["toca cualquier foto de un post para verla en grande (arreglado, antes fallaba por caché desactualizado)"] },
@@ -805,7 +806,7 @@ lightboxEl.addEventListener("touchend", (e) => {
 });
 
 // ---------- migración: recalcular puntos de posts viejos con la nueva regla de duración ----------
-const PTS_RULE_VERSION = 2;
+const PTS_RULE_VERSION = 3;
 async function migrateDurationPoints() {
   try {
     const snap = await getDocs(postsCol);
@@ -862,4 +863,3 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("service-worker.js").catch(() => {});
   });
 }
-
