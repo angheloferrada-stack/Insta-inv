@@ -79,28 +79,11 @@
       <div class="psub" id="profileSub">-</div>
     </div>
   </div>
-
-  <div class="bio-box">
-    <div class="pbio" id="profileBio"></div>
-    <button class="bio-edit-btn" id="bioEditBtn">✏️ editar biografía</button>
-    <div class="bio-edit-form hidden" id="bioEditForm">
-      <textarea id="bioInput" class="desc-input" placeholder="cuenta algo sobre ti (máx 160 caracteres)..." rows="2" maxlength="160"></textarea>
-      <div class="bio-actions">
-        <button class="vbtn" id="bioCancelBtn">cancelar</button>
-        <button class="primary-btn small-btn" id="bioSaveBtn">guardar</button>
-      </div>
-    </div>
-  </div>
-
   <div class="stat-grid">
     <div class="stat-card"><div class="snum" id="statTotal">0</div><div class="slabel">puntos histórico</div></div>
     <div class="stat-card"><div class="snum" id="statMonth">0</div><div class="slabel">este mes</div></div>
     <div class="stat-card"><div class="snum" id="statStreak">0</div><div class="slabel">racha actual</div></div>
   </div>
-
-  <div class="section-title">Análisis de rendimiento</div>
-  <div class="analytics-card" id="profileAnalytics"></div>
-
   <div class="section-title">Bitácora</div>
   <div id="timelineList"></div>
   <button class="about-link" id="aboutLink">ⓘ acerca de insta⁻¹ y changelog</button>
@@ -138,32 +121,6 @@
   <button class="navbtn" data-screen="profile">
     <span class="navicon">◐</span>perfil
   </button>
-</div>
-
-<!-- MODAL PERFIL PÚBLICO -->
-<div class="user-modal-overlay hidden" id="userModalOverlay">
-  <div class="user-modal">
-    <button class="modal-close-btn" id="userModalClose">✕</button>
-    <div class="profile-head">
-      <div class="avatar avatar-large zoomable-photo" id="modalUserAvatar"></div>
-      <div>
-        <div class="pname" id="modalUserName">-</div>
-        <div class="psub" id="modalUserSub">-</div>
-      </div>
-    </div>
-    <div class="pbio modal-bio" id="modalUserBio"></div>
-    <div class="stat-grid">
-      <div class="stat-card"><div class="snum" id="modalStatTotal">0</div><div class="slabel">puntos histórico</div></div>
-      <div class="stat-card"><div class="snum" id="modalStatMonth">0</div><div class="slabel">este mes</div></div>
-      <div class="stat-card"><div class="snum" id="modalStatStreak">0</div><div class="slabel">racha actual</div></div>
-    </div>
-
-    <div class="section-title">Rendimiento</div>
-    <div class="analytics-card" id="modalAnalytics"></div>
-
-    <div class="section-title">Bitácora reciente</div>
-    <div class="modal-timeline" id="modalTimelineList"></div>
-  </div>
 </div>
 
 <div class="lightbox hidden" id="lightbox">
