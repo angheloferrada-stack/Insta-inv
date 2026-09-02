@@ -79,13 +79,36 @@
       <div class="psub" id="profileSub">-</div>
     </div>
   </div>
-  <div class="stat-grid">
-    <div class="stat-card"><div class="snum" id="statTotal">0</div><div class="slabel">puntos histórico</div></div>
-    <div class="stat-card"><div class="snum" id="statMonth">0</div><div class="slabel">este mes</div></div>
-    <div class="stat-card"><div class="snum" id="statStreak">0</div><div class="slabel">racha actual</div></div>
+
+  <div class="tab-switch" id="profileTabs">
+    <button class="tab-btn active" data-tab="summary">resumen</button>
+    <button class="tab-btn" data-tab="stats">estadísticas</button>
   </div>
-  <div class="section-title">Bitácora</div>
-  <div id="timelineList"></div>
+
+  <div class="profile-tab-content" id="profileSummaryTab">
+    <div class="stat-grid">
+      <div class="stat-card"><div class="snum" id="statTotal">0</div><div class="slabel">puntos histórico</div></div>
+      <div class="stat-card"><div class="snum" id="statMonth">0</div><div class="slabel">este mes</div></div>
+      <div class="stat-card"><div class="snum" id="statStreak">0</div><div class="slabel">racha actual</div></div>
+    </div>
+    <div class="section-title">Bitácora</div>
+    <div id="timelineList"></div>
+  </div>
+
+  <div class="profile-tab-content hidden" id="profileStatsTab">
+    <div class="period-switch" id="statsPeriodSwitch">
+      <button class="period-btn active" data-period="week">semana</button>
+      <button class="period-btn" data-period="month">mes</button>
+      <button class="period-btn" data-period="year">año</button>
+    </div>
+    <div class="section-title">Puntos por período</div>
+    <div class="bar-chart" id="statsBarChart"></div>
+    <div class="section-title">Tu actividad favorita</div>
+    <div id="statsFavCat"></div>
+    <div class="section-title">Cómo vas</div>
+    <div id="statsTrend"></div>
+  </div>
+
   <button class="about-link" id="aboutLink">ⓘ acerca de insta⁻¹ y changelog</button>
 </section>
 
@@ -104,8 +127,27 @@
   <div class="section-title">Categorías</div>
   <div id="aboutCats"></div>
 
-  <div class="section-title">Changelog</div>
+    <div class="section-title">Changelog</div>
   <div id="aboutChangelog"></div>
+</section>
+
+<!-- PERFIL DE UN AMIGX (solo lectura) -->
+<section class="screen" id="screen-friend">
+  <button class="back-link" id="friendBack">← volver</button>
+  <div class="profile-head" style="margin-top:14px">
+    <div class="avatar big" id="friendAvatar"></div>
+    <div>
+      <div class="pname" id="friendName">-</div>
+      <div class="psub" id="friendSub">-</div>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="snum" id="friendStatTotal">0</div><div class="slabel">puntos histórico</div></div>
+    <div class="stat-card"><div class="snum" id="friendStatMonth">0</div><div class="slabel">este mes</div></div>
+    <div class="stat-card"><div class="snum" id="friendStatStreak">0</div><div class="slabel">racha actual</div></div>
+  </div>
+  <div class="section-title">Bitácora</div>
+  <div id="friendTimelineList"></div>
 </section>
 
 <div class="bottomnav">
