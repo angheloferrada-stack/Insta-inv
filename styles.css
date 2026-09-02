@@ -228,475 +228,331 @@ img { max-width: 100%; display: block; }
 .verify-row { display: flex; gap: 8px; }
 .vbtn {
   border: 1px solid var(--line-strong);
-  background: var(--bg);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex; align-items: center; gap: 4px;
-}
-.vbtn.approve.active { border-color: var(--ok); color: var(--ok); background: #f0f8f2; }
-.vbtn.reject.active { border-color: var(--danger); color: var(--danger); background: #faf0ef; }
-.verify-status {
-  font-size: 12px;
-  color: var(--ink-soft);
-}
-.voter-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 14px 12px;
-}
-.voter-chip {
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 999px;
-  padding: 4px 9px;
-  border: 1px solid var(--line-strong);
-}
-.voter-chip.up { color: var(--ok); border-color: var(--ok); }
-.voter-chip.down { color: var(--danger); border-color: var(--danger); }
+  background:
+// ---------- firebase ----------
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc,
+  query, orderBy, where, getDocs,
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
-/* Ranking */
-.rank-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 4px;
-  border-bottom: 1px solid var(--line);
-}
-.rank-row:last-child { border-bottom: none; }
-.rank-num {
-  width: 22px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ink-soft);
-  text-align: center;
-}
-.rank-row:nth-child(1) .rank-num { color: var(--ink); }
-.rank-info { flex: 1; }
-.rank-name { font-size: 15px; font-weight: 600; }
-.rank-streak { font-size: 12px; color: var(--ink-soft); }
-.rank-points { font-size: 16px; font-weight: 700; }
+const firebaseConfig = {
+  apiKey: "AIzaSyAo_WUWgf9Zb4dNBUkdSOQ29GTnHleF1Ik",
+  authDomain: "insta-inv.firebaseapp.com",
+  projectId: "insta-inv",
+  storageBucket: "insta-inv.firebasestorage.app",
+  messagingSenderId: "469488622220",
+  appId: "1:469488622220:web:586acfd23cf209bafcb9a9",
+};
 
-.past-season {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 4px;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
-}
-.past-season .winner { color: var(--ink-soft); }
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const postsCol = collection(db, "posts");
+const usersCol = collection(db, "users");
 
-/* Publish */
-.cat-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  margin-top: 10px;
-}
-.cat-choice {
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  padding: 14px 12px;
-  text-align: left;
-  background: var(--bg);
-}
-.cat-choice.selected { border: 2px solid var(--ink); }
-.cat-choice .cname { font-size: 14px; font-weight: 700; }
-.cat-choice .cpts { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
-.cat-choice .cdesc {
-  font-size: 11px;
-  color: var(--ink-soft);
-  margin-top: 6px;
-  line-height: 1.3;
-}
+// ---------- datos base ----------
+const CATEGORIES = [
+  { id: "estudio", name: "Estudiar", pts: 6, desc: "Sesión real de estudio, mínimo 15 min.", minMin: 15, bonusEvery: 15, maxBonus: 12 },
+  { id: "ejercicio", name: "Ejercicio", pts: 9, desc: "Entrenar, correr, deporte: mover el cuerpo en serio.", minMin: 15, bonusEvery: 15, maxBonus: 18 },
+  { id: "lectura", name: "Leer", pts: 5, desc: "Lectura de libro o algo con sustancia, no redes.", minMin: 15, bonusEvery: 10, maxBonus: 10 },
+  { id: "creativo", name: "Proyecto creativo", pts: 8, desc: "Avanzar en arte, música, escritura o lo que estés armando.", minMin: 15, bonusEvery: 20, maxBonus: 16 },
+  { id: "personal", name: "Proyecto personal", pts: 8, desc: "Curso, negocio propio, side project: algo tuyo que construís.", minMin: 15, bonusEvery: 20, maxBonus: 16 },
+  { id: "nada", name: "No hacer nada", pts: 5, desc: "Descanso real, sin celular ni pantallas.", minMin: 15, bonusEvery: 30, maxBonus: 10 },
+  { id: "monje", name: "Monje tibetano", pts: 40, desc: "Máximo 30 min de uso de celular en 24 h. Sube el print de pantalla." },
+  { id: "descanso", name: "Buen descanso", pts: 11, desc: "Dormirte temprano y levantarte temprano. Sube la hora de alarma o de despertar como prueba." },
+];
 
-.photo-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 10px;
+const DEFAULT_USERS = [];
+
+const MONTH_NAMES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+const COMBOS = [
+  { cats: ["monje", "nada"], mult: 1.3, label: "Retiro real" },
+  { cats: ["estudio", "lectura"], mult: 1.2, label: "Brain mode" },
+  { cats: ["ejercicio", "personal"], mult: 1.25, label: "Cuerpo + proyecto" },
+  { cats: ["creativo", "personal"], mult: 1.2, label: "Builder day" },
+  { cats: ["estudio", "personal"], mult: 1.2, label: "Aprendizaje aplicado" },
+  { cats: ["creativo", "lectura"], mult: 1.15, label: "Inspiración" },
+  { cats: ["ejercicio", "nada"], mult: 1.15, label: "Cuerpo y mente" },
+  { cats: ["monje", "creativo"], mult: 1.25, label: "Mente clara" },
+  { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
+];
+
+const APP_VERSION = "1.17";
+
+const CHANGELOG = [
+  { v: "1.17", changes: ["sección de análisis y estadísticas de rendimiento: tendencia semanal (mejorando/empeorando), gráfico de distribución de actividades y diagnóstico personalizado"] },
+  { v: "1.16", changes: ["personalización de perfil con biografía corta guardada en Firebase", "haz clic en el avatar o nombre de cualquier usuario para ver su perfil público completo con foto ampliable, biografía e historial"] },
+  { v: "1.15", changes: ["mínimo de tiempo bajado a 15 min en todas las categorías por duración, con puntaje base más chico (se compensa con los bonus)"] },
+  { v: "1.14", changes: ["puntos por tiempo con rendimiento decreciente: los primeros puntos extra son baratos, después cuestan más minutos, para que no compense quedarse horas farmeando", "los posts viejos con minutos se recalculan solos con la regla nueva"] },
+  { v: "1.13", changes: ["deslizar entre fotos de un mismo post en modo grande", "opción de eliminar tus propios posts"] },
+  { v: "1.12", changes: ["toca cualquier foto de un post para verla en grande (arreglado, antes fallaba por caché desactualizado)"] },
+  { v: "1.11", changes: ["puntos según el tiempo real de la actividad: mínimo para el puntaje base + bonus por cada tramo extra"] },
+  { v: "1.9", changes: ["foto de perfil: tócala en tu perfil para cambiarla"] },
+  { v: "1.8", changes: ["ahora se necesita mayoría de votos positivos para ganar los puntos, no solo 1 aprobación"] },
+  { v: "1.7.1", changes: ["arreglo: la bitácora no mostraba nada por un bug al sacar el selector de perfil demo"] },
+  { v: "1.7", changes: ["se ve quién votó cada post y qué votó"] },
+  { v: "1.6", changes: ["categoría Buen descanso (dormir y despertar temprano)"] },
+  { v: "1.5", changes: ["descripción de cada categoría", "pantalla de acerca de + changelog"] },
+  { v: "1.4", changes: ["contraseña por nombre para que nadie te robe la identidad"] },
+  { v: "1.3", changes: ["nombres personalizados en vez de lista fija", "textos ajustados al chileno"] },
+  { v: "1.2", changes: ["conexión en tiempo real con Firebase (feed, votos y comentarios compartidos)"] },
+  { v: "1.1", changes: ["combos: multiplicador de puntos por categorías del mismo día", "comentarios en los posts"] },
+  { v: "1.0", changes: ["categoría Monje tibetano", "varias fotos + descripción por post", "primera versión pública"] },
+];
+
+// ---------- estado ----------
+const state = {
+  currentUser: localStorage.getItem("insta_inv_whoami") || null,
+  users: DEFAULT_USERS,
+  posts: [],
+};
+
+function catById(id) { return CATEGORIES.find(c => c.id === id); }
+function ptsForDuration(cat, minutes) {
+  if (!cat.minMin) return cat.pts;
+  const extraMin = Math.max(0, minutes - cat.minMin);
+  return cat.pts + bonusPointsForExtraMinutes(extraMin, cat.bonusEvery, cat.maxBonus);
 }
-.photo-thumb {
-  position: relative;
-  aspect-ratio: 1;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid var(--line);
+const EASY_TIER = 3;
+const SLOW_FACTOR = 3;
+function bonusPointsForExtraMinutes(extraMin, bonusEvery, maxBonus) {
+  let pts = 0;
+  let remaining = extraMin;
+  for (let i = 1; i <= maxBonus; i++) {
+    const cost = i <= EASY_TIER ? bonusEvery : bonusEvery * SLOW_FACTOR;
+    if (remaining >= cost) { pts++; remaining -= cost; } else break;
+  }
+  return pts;
 }
-.photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.photo-remove {
-  position: absolute;
-  top: 4px; right: 4px;
-  width: 20px; height: 20px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(17,17,17,0.75);
-  color: #fff;
-  font-size: 11px;
-  display: flex; align-items: center; justify-content: center;
-  padding: 0;
-}
-.photo-add {
-  aspect-ratio: 1;
-  border-radius: 10px;
-  border: 1.5px dashed var(--line-strong);
-  background: var(--bg);
-  color: var(--ink-soft);
-  font-size: 24px;
-  display: flex; align-items: center; justify-content: center;
+function userById(id) { return state.users.find(u => u.id === id); }
+function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
+function avatarHtml(u, size, extraClass = "") {
+  const cls = size ? `avatar ${size} ${extraClass}` : `avatar ${extraClass}`;
+  const userIdAttr = `data-user-id="${u.id}"`;
+  if (u.avatar) return `<div class="${cls}" style="background-image:url('${u.avatar}')" ${userIdAttr}></div>`;
+  return `<div class="${cls}" ${userIdAttr}>${initials(u.name)}</div>`;
 }
 
-.desc-input {
-  width: 100%;
-  margin-top: 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  font-family: var(--font);
-  font-size: 14px;
-  resize: none;
-  color: var(--ink);
-}
-.desc-input:focus { outline: none; border-color: var(--ink); }
-
-.duration-hint {
-  font-size: 12px;
-  color: var(--ink-soft);
-  margin-top: 6px;
-  line-height: 1.4;
-}
-.duration-hint.bad { color: var(--danger); }
-
-.combo-info-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 13px;
-}
-.combo-info-mult { font-weight: 700; }
-
-.primary-btn {
-  width: 100%;
-  background: var(--ink);
-  color: var(--bg);
-  border: none;
-  border-radius: var(--radius);
-  padding: 15px;
-  font-size: 15px;
-  font-weight: 700;
-  margin-top: 20px;
-}
-.primary-btn:disabled { opacity: 0.35; }
-
-/* Profile */
-.profile-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: 12px;
-}
-.profile-head .avatar { width: 56px; height: 56px; font-size: 19px; }
-.profile-head .pname { font-size: 18px; font-weight: 700; }
-.profile-head .psub { font-size: 13px; color: var(--ink-soft); }
-
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 18px;
-}
-.stat-card {
-  background: var(--panel);
-  border-radius: 12px;
-  padding: 12px 10px;
-  text-align: center;
-}
-.stat-card .snum { font-size: 18px; font-weight: 700; }
-.stat-card .slabel { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
-
-.timeline-item {
-  display: flex;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-}
-.timeline-item .tdate {
-  width: 46px;
-  font-size: 11px;
-  color: var(--ink-soft);
-  flex-shrink: 0;
-  padding-top: 2px;
-}
-.timeline-item .tbody { flex: 1; }
-.timeline-item .ttitle { font-size: 14px; font-weight: 600; }
-.timeline-item .tpts { font-size: 13px; font-weight: 700; }
-
-.about-link {
-  display: block;
-  width: 100%;
-  text-align: center;
-  border: none;
-  background: none;
-  color: var(--ink-soft);
-  font-size: 13px;
-  padding: 20px 0 10px;
-}
-.back-link {
-  border: none;
-  background: none;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 600;
-  padding: 12px 0 0;
-}
-.about-version {
-  font-size: 12px;
-  color: var(--ink-soft);
-  margin-bottom: 16px;
-}
-.about-text {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--ink);
-}
-.about-cat-row {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-}
-.about-cat-head {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-.about-cat-name { font-size: 14px; font-weight: 700; }
-.about-cat-pts { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
-.about-cat-desc { font-size: 13px; color: var(--ink-soft); line-height: 1.4; }
-
-.changelog-row {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-}
-.changelog-v { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
-.changelog-list {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 13px;
-  color: var(--ink-soft);
-  line-height: 1.6;
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
 }
 
-/* Bottom nav */
-.bottomnav {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  max-width: 480px;
-  margin: 0 auto;
-  background: var(--bg);
-  border-top: 1px solid var(--line);
-  display: flex;
-  z-index: 10;
-}
-.navbtn {
-  flex: 1;
-  border: none;
-  background: none;
-  padding: 10px 4px 22px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  color: var(--ink-soft);
-  font-size: 10px;
-  font-weight: 600;
-}
-.navbtn.active { color: var(--ink); }
-.navicon { font-size: 20px; line-height: 1; }
-.navbtn.fab .navicon {
-  width: 30px; height: 30px;
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--bg);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
+async function hashPassword(pass) {
+  const enc = new TextEncoder().encode("insta-inv-salt::" + pass);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* Rest tag */
-.rest-note {
-  font-size: 12px;
-  color: var(--ink-soft);
-  font-style: italic;
-  padding: 8px 14px 12px;
-  border-top: 1px solid var(--line);
+// ---------- identidad ----------
+async function initWhoami() {
+  const overlay = document.getElementById("whoamiOverlay");
+  if (state.currentUser && userById(state.currentUser)) {
+    overlay.classList.add("hidden");
+    return;
+  }
+  overlay.classList.remove("hidden");
+  renderWhoamiForm();
 }
 
-.empty-state {
-  text-align: center;
-  color: var(--ink-soft);
-  font-size: 13px;
-  padding: 40px 10px;
+function renderWhoamiForm() {
+  const list = document.getElementById("whoamiList");
+  const others = state.users.length
+    ? `<div class="whoami-others">
+        <div class="whoami-others-label">ya están en el grupo:</div>
+        ${state.users.map(u => `<button class="whoami-choice small" data-name="${escapeHtml(u.name)}">${escapeHtml(u.name)}</button>`).join("")}
+      </div>`
+    : "";
+  list.innerHTML = `
+    <input type="text" id="whoamiInput" class="whoami-input" placeholder="tu nombre" maxlength="20">
+    <input type="password" id="whoamiPass" class="whoami-input" placeholder="tu contraseña" maxlength="40">
+    <div class="whoami-error" id="whoamiError"></div>
+    <button class="primary-btn" id="whoamiSubmit">entrar</button>
+    <div class="whoami-hint">si es tu primera vez, esa contraseña te va a quedar para siempre. no la pierdas.</div>
+    ${others}
+    <div class="sync-note">esto queda guardado en este celular</div>
+  `;
+  document.getElementById("whoamiSubmit").addEventListener("click", submitWhoami);
+  document.getElementById("whoamiPass").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submitWhoami();
+  });
+  list.querySelectorAll(".whoami-choice[data-name]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("whoamiInput").value = btn.dataset.name;
+      document.getElementById("whoamiPass").focus();
+    });
+  });
 }
 
-/* Whoami overlay */
-.whoami-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--bg);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-.whoami-overlay.hidden { display: none; }
-.whoami-box {
-  width: 100%;
-  max-width: 340px;
-  text-align: center;
-}
-.whoami-sub {
-  font-size: 14px;
-  color: var(--ink-soft);
-  margin-bottom: 24px;
-}
-.whoami-choice {
-  width: 100%;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 10px;
-  font-size: 16px;
-  font-weight: 700;
-  background: var(--bg);
-  color: var(--ink);
-}
-.whoami-choice.small {
-  padding: 11px;
-  font-size: 14px;
-  font-weight: 600;
-}
-.whoami-input {
-  width: 100%;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  padding: 15px;
-  font-size: 16px;
-  font-family: var(--font);
-  color: var(--ink);
-  margin-bottom: 10px;
-  text-align: center;
-}
-.whoami-input:focus { outline: none; border-color: var(--ink); }
-.whoami-others {
-  margin-top: 26px;
-  text-align: left;
-}
-.whoami-others-label {
-  font-size: 12px;
-  color: var(--ink-soft);
-  margin-bottom: 8px;
-}
-.whoami-error {
-  color: var(--danger);
-  font-size: 12px;
-  min-height: 16px;
-  margin-bottom: 4px;
-  text-align: left;
-}
-.whoami-hint {
-  font-size: 11px;
-  color: var(--ink-soft);
-  margin-top: 10px;
-  line-height: 1.4;
-}
-.sync-note {
-  font-size: 11px;
-  color: var(--ink-soft);
-  text-align: center;
-  margin-top: 16px;
+async function submitWhoami() {
+  const nameInput = document.getElementById("whoamiInput");
+  const passInput = document.getElementById("whoamiPass");
+  const errorBox = document.getElementById("whoamiError");
+  const name = nameInput.value.trim();
+  const pass = passInput.value;
+  errorBox.textContent = "";
+
+  if (!name) { nameInput.focus(); return; }
+  if (!pass) { passInput.focus(); return; }
+
+  const btn = document.getElementById("whoamiSubmit");
+  btn.disabled = true;
+  btn.textContent = "un toque...";
+
+  try {
+    const passHash = await hashPassword(pass);
+    const existing = state.users.find(u => u.name.toLowerCase() === name.toLowerCase());
+
+    if (existing) {
+      if (existing.passHash !== passHash) {
+        errorBox.textContent = "esa contraseña no es. probá de nuevo.";
+        btn.disabled = false;
+        btn.textContent = "entrar";
+        return;
+      }
+      setIdentity(existing.id);
+    } else {
+      const newDoc = await addDoc(usersCol, { name, passHash, ts: Date.now() });
+      setIdentity(newDoc.id);
+    }
+  } catch (err) {
+    toast("no resultó, revisa tu conexión");
+    btn.disabled = false;
+    btn.textContent = "entrar";
+  }
 }
 
-.zoomable-photo { cursor: zoom-in; }
-
-.lightbox {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.92);
-  z-index: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.lightbox.hidden { display: none; }
-.lightbox img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 8px;
-}
-.lightbox-arrow {
-  position: fixed;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255,255,255,0.15);
-  color: #fff;
-  font-size: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 310;
-}
-.lightbox-prev { left: 10px; }
-.lightbox-next { right: 10px; }
-.lightbox-counter {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  background: rgba(255,255,255,0.15);
-  border-radius: 999px;
-  padding: 5px 12px;
+function setIdentity(id) {
+  state.currentUser = id;
+  localStorage.setItem("insta_inv_whoami", id);
+  document.getElementById("whoamiOverlay").classList.add("hidden");
+  showScreen("feed");
 }
 
-.delete-post-btn {
-  display: block;
-  width: 100%;
-  text-align: center;
-  border: none;
-  border-top: 1px solid var(--line);
-  background: none;
-  color: var(--danger);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 10px 0;
+// ---------- temporada ----------
+function seasonKey(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth()}`;
+}
+function currentSeasonKey() { return seasonKey(Date.now()); }
+function seasonLabelFor(key) {
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTH_NAMES[m]} ${y}`;
+}
+function daysLeftInMonth() {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return end.getDate() - now.getDate();
 }
 
-.toast {
-  position: fixed;
-  bottom: 90px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--ink);
-  color: var(--bg);
-  padding: 10px 18px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 600;
-  z-index: 20;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+// ---------- verificación ----------
+function approvalsCount(post) {
+  return Object.values(post.votes || {}).filter(v => v === "up").length;
 }
-.toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+function rejectionsCount(post) {
+  return Object.values(post.votes || {}).filter(v => v === "down").length;
+}
+function isApproved(post) {
+  const up = approvalsCount(post);
+  const down = rejectionsCount(post);
+  return up > 0 && up > down;
+}
+function statusLabel(post) {
+  const up = approvalsCount(post);
+  const down = rejectionsCount(post);
+  if (up === 0 && down === 0) return "pendiente";
+  if (up === down) return "empatado, falta un voto";
+  if (down > up) return "rechazado por mayoría";
+  return "pendiente";
+}
+function voterList(post) {
+  const votes = post.votes || {};
+  const entries = Object.entries(votes);
+  if (!entries.length) return "";
+  const chips = entries.map(([uid, v]) => {
+    const name = userById(uid)?.name || "?";
+    const cls = v === "up" ? "up" : "down";
+    const icon = v === "up" ? "✓" : "✕";
+    return `<span class="voter-chip ${cls} user-trigger" data-user-id="${uid}">${icon} ${escapeHtml(name)}</span>`;
+  }).join("");
+  return `<div class="voter-list">${chips}</div>`;
+}
+
+// ---------- combos ----------
+function dayKey(ts) { return new Date(ts).toDateString(); }
+
+function comboForCats(catIds) {
+  const set = new Set(catIds);
+  let best = null;
+  for (const combo of COMBOS) {
+    if (combo.cats.every(c => set.has(c))) {
+      if (!best || combo.mult > best.mult) best = combo;
+    }
+  }
+  return best;
+}
+
+function dailyTotalsForUser(userId) {
+  const byDay = {};
+  state.posts
+    .filter(p => p.userId === userId && isApproved(p))
+    .forEach(p => {
+      const k = dayKey(p.ts);
+      if (!byDay[k]) byDay[k] = { posts: [], base: 0, ts: p.ts };
+      byDay[k].posts.push(p);
+      byDay[k].base += p.pts;
+    });
+  Object.values(byDay).forEach(d => {
+    const combo = comboForCats(d.posts.map(p => p.catId));
+    d.combo = combo;
+    d.total = combo ? Math.round(d.base * combo.mult) : d.base;
+  });
+  return byDay;
+}
+
+function comboActiveForPost(post) {
+  const byDay = dailyTotalsForUser(post.userId);
+  const d = byDay[dayKey(post.ts)];
+  return d ? d.combo : null;
+}
+
+// ---------- puntos y racha ----------
+function pointsForUserInSeason(userId, key) {
+  const byDay = dailyTotalsForUser(userId);
+  return Object.values(byDay)
+    .filter(d => seasonKey(d.ts) === key)
+    .reduce((sum, d) => sum + d.total, 0);
+}
+function totalPointsForUser(userId) {
+  const byDay = dailyTotalsForUser(userId);
+  return Object.values(byDay).reduce((sum, d) => sum + d.total, 0);
+}
+function currentStreak(userId) {
+  const days = new Set(
+    state.posts.filter(p => p.userId === userId && isApproved(p))
+      .map(p => new Date(p.ts).toDateString())
+  );
+  let streak = 0;
+  let cursor = new Date();
+  while (days.has(cursor.toDateString())) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+// ---------- navegación ----------
+function showScreen(name) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(`screen-${name}`).classList.add("active");
+  document.querySelectorAll(".navbtn").forEach(b => b.classList.toggle("active", b.dataset.screen === name));
+  if (name === "feed") renderFeed();
+  if (name === "ranking") renderRanking();
+  if (name === "profile") renderProfile();
+  if (name === "publish") renderPublish();
+  if (name === "about") renderAbout();
+}
+document.querySelectorAll(".navbtn").forEach(btn => {
+  btn.addEventListener("click", () => showScreen(btn.dataset.screen));
