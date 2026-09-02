@@ -47,9 +47,10 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.15";
+const APP_VERSION = "1.16";
 
 const CHANGELOG = [
+  { v: "1.16", changes: ["perfiles públicos: toca el nombre o la foto de cualquiera en el feed o el ranking para ver su perfil y estadísticas", "pestaña de estadísticas en tu perfil: gráfico de puntos por semana/mes/año, tu actividad favorita y si vas subiendo, manteniendo o bajando el ritmo", "arreglado: si publicas dos veces la misma categoría el mismo día, ya no se duplican los puntos base, solo se suma el extra por el tiempo nuevo"] },
   { v: "1.15", changes: ["mínimo de tiempo bajado a 15 min en todas las categorías por duración, con puntaje base más chico (se compensa con los bonus)"] },
   { v: "1.14", changes: ["puntos por tiempo con rendimiento decreciente: los primeros puntos extra son baratos, después cuestan más minutos, para que no compense quedarse horas farmeando", "los posts viejos con minutos se recalculan solos con la regla nueva"] },
   { v: "1.13", changes: ["deslizar entre fotos de un mismo post en modo grande", "opción de eliminar tus propios posts"] },
@@ -250,6 +251,14 @@ function voterList(post) {
 // ---------- combos ----------
 function dayKey(ts) { return new Date(ts).toDateString(); }
 
+// minutos ya subidos hoy por este usuario en esta categoría (para no duplicar puntos base)
+function minutesLoggedTodayForCat(userId, catId, ts) {
+  const key = dayKey(ts);
+  return state.posts
+    .filter(p => p.userId === userId && p.catId === catId && dayKey(p.ts) === key)
+    .reduce((sum, p) => sum + (p.minutes || 0), 0);
+}
+
 function comboForCats(catIds) {
   const set = new Set(catIds);
   let best = null;
@@ -384,10 +393,12 @@ function renderFeed() {
     return `
     <div class="post-card">
       <div class="post-head">
-        ${avatarHtml(u)}
-        <div class="who">
-          <div class="name">${u.name}</div>
-          <div class="meta">${timeAgo(p.ts)}</div>
+        <div class="post-head-user" data-user="${p.userId}">
+          ${avatarHtml(u)}
+          <div class="who">
+            <div class="name">${u.name}</div>
+            <div class="meta">${timeAgo(p.ts)}</div>
+          </div>
         </div>
         <div class="cat-tag">${cat.name}${p.minutes ? ` · ${p.minutes} min` : ""}</div>
       </div>
@@ -417,6 +428,9 @@ function renderFeed() {
     </div>`;
   }).join("");
 
+  list.querySelectorAll(".post-head-user").forEach(el => {
+    el.addEventListener("click", () => openFriendProfile(el.dataset.user));
+  });
   list.querySelectorAll(".vbtn").forEach(btn => {
     btn.addEventListener("click", () => vote(btn.dataset.post, btn.dataset.vote));
   });
@@ -511,7 +525,7 @@ function renderRanking() {
     .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
     .sort((a, b) => b.pts - a.pts);
   document.getElementById("rankList").innerHTML = rows.map((r, i) => `
-    <div class="rank-row">
+    <div class="rank-row clickable" data-user="${r.u.id}">
       <div class="rank-num">${i + 1}</div>
       ${avatarHtml(r.u)}
       <div class="rank-info">
@@ -520,6 +534,9 @@ function renderRanking() {
       </div>
       <div class="rank-points">${r.pts}</div>
     </div>`).join("");
+  document.getElementById("rankList").querySelectorAll(".rank-row[data-user]").forEach(el => {
+    el.addEventListener("click", () => openFriendProfile(el.dataset.user));
+  });
 
   const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
   const past = document.getElementById("pastSeasons");
@@ -601,13 +618,12 @@ function renderDurationField() {
     box.innerHTML = "";
     return;
   }
-  box.innerHTML = `
+    box.innerHTML = `
     <div class="section-title" style="margin-top:20px">¿Cuánto tiempo?</div>
     <input type="number" id="durationInput" class="whoami-input" placeholder="minutos" min="1" style="text-align:left;padding-left:16px">
-    <div class="duration-hint" id="durationHint">
-      mínimo ${cat.minMin} min para los ${cat.pts} pts base. los primeros ${EASY_TIER} pts extra cuestan ${cat.bonusEvery} min c/u, después cuestan ${cat.bonusEvery * SLOW_FACTOR} min c/u (hasta +${cat.maxBonus}).
-    </div>
+    <div class="duration-hint" id="durationHint"></div>
   `;
+  updateDurationHint();
   document.getElementById("durationInput").addEventListener("input", () => {
     updateDurationHint();
     checkPublishReady();
@@ -620,6 +636,21 @@ function updateDurationHint() {
   const input = document.getElementById("durationInput");
   if (!cat || !hint || !input) return;
   const minutes = Number(input.value);
+  const priorMinutes = minutesLoggedTodayForCat(state.currentUser, cat.id, Date.now());
+
+  if (priorMinutes > 0) {
+    if (!minutes) {
+      hint.textContent = `ya llevas ${priorMinutes} min hoy en esta categoría. esto se suma como tiempo extra (sin puntos base de nuevo).`;
+      hint.classList.remove("bad");
+      return;
+    }
+    const priorPts = ptsForDuration(cat, priorMinutes);
+    const extraPts = Math.max(0, ptsForDuration(cat, priorMinutes + minutes) - priorPts);
+    hint.textContent = `sumando a los ${priorMinutes} min de hoy: +${extraPts} pts extra por estos ${minutes} min.`;
+    hint.classList.remove("bad");
+    return;
+  }
+
   if (!minutes) {
     hint.textContent = `mínimo ${cat.minMin} min para los ${cat.pts} pts base. los primeros ${EASY_TIER} pts extra cuestan ${cat.bonusEvery} min c/u, después ${cat.bonusEvery * SLOW_FACTOR} min c/u (hasta +${cat.maxBonus}).`;
     hint.classList.remove("bad");
@@ -640,6 +671,8 @@ function currentDurationValid() {
   if (!cat || !cat.minMin) return true;
   const input = document.getElementById("durationInput");
   const minutes = Number(input?.value || 0);
+  const priorMinutes = minutesLoggedTodayForCat(state.currentUser, cat.id, Date.now());
+  if (priorMinutes > 0) return minutes > 0; // ya cumpliste el mínimo hoy, esto es tiempo extra
   return minutes >= cat.minMin;
 }
 
@@ -686,10 +719,17 @@ function checkPublishReady() {
 
 document.getElementById("publishBtn").addEventListener("click", async () => {
   if (!selectedCat || !pendingPhotos.length || !currentDurationValid()) return;
-  const cat = catById(selectedCat);
+    const cat = catById(selectedCat);
   const durationInput = document.getElementById("durationInput");
   const minutes = cat.minMin ? Number(durationInput.value) : null;
-  const pts = cat.minMin ? ptsForDuration(cat, minutes) : cat.pts;
+  let pts;
+  if (cat.minMin) {
+    const priorMinutes = minutesLoggedTodayForCat(state.currentUser, cat.id, Date.now());
+    const priorPts = priorMinutes > 0 ? ptsForDuration(cat, priorMinutes) : 0;
+    pts = Math.max(0, ptsForDuration(cat, priorMinutes + minutes) - priorPts);
+  } else {
+    pts = cat.pts;
+  }
   const btn = document.getElementById("publishBtn");
   btn.disabled = true;
   btn.textContent = "publicando...";
@@ -703,7 +743,8 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
       votes: {},
       photos: pendingPhotos,
       desc: document.getElementById("descInput").value.trim(),
-      comments: [],
+            comments: [],
+      ptsVersion: PTS_RULE_VERSION,
     });
     toast("subido. a esperar que te aprueben 👀");
     showScreen("feed");
@@ -772,7 +813,193 @@ function renderProfile() {
       <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
     </div>`;
   }).join("");
+
+  if (!document.getElementById("profileStatsTab").classList.contains("hidden")) {
+    renderStatsTab(state.currentUser);
+  }
 }
+
+// ---------- render: perfil de un amigx (solo lectura) ----------
+let screenBeforeFriend = "feed";
+function openFriendProfile(userId) {
+  if (userId === state.currentUser) { showScreen("profile"); return; }
+  const u = userById(userId);
+  if (!u) return;
+  screenBeforeFriend = document.querySelector(".screen.active")?.id.replace("screen-", "") || "feed";
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById("screen-friend").classList.add("active");
+  renderFriendProfile(userId);
+}
+
+function renderFriendProfile(userId) {
+  const u = userById(userId);
+  if (!u) return;
+  const avatarBox = document.getElementById("friendAvatar");
+  if (u.avatar) {
+    avatarBox.style.backgroundImage = `url('${u.avatar}')`;
+    avatarBox.textContent = "";
+    avatarBox.classList.add("zoomable-photo");
+    avatarBox.onclick = () => openLightbox([u.avatar], 0);
+  } else {
+    avatarBox.style.backgroundImage = "";
+    avatarBox.textContent = initials(u.name);
+    avatarBox.onclick = null;
+  }
+  document.getElementById("friendName").textContent = u.name;
+  document.getElementById("friendSub").textContent = `${totalPointsForUser(u.id)} pts histórico`;
+  document.getElementById("friendStatTotal").textContent = totalPointsForUser(u.id);
+  document.getElementById("friendStatMonth").textContent = pointsForUserInSeason(u.id, currentSeasonKey());
+  document.getElementById("friendStatStreak").textContent = currentStreak(u.id);
+
+  const theirs = state.posts.filter(p => p.userId === userId).sort((a, b) => b.ts - a.ts);
+  const list = document.getElementById("friendTimelineList");
+  if (!theirs.length) {
+    list.innerHTML = `<div class="empty-state">todavía no hay nada en su bitácora.</div>`;
+    return;
+  }
+  list.innerHTML = theirs.map(p => {
+    const d = new Date(p.ts);
+    const cat = catById(p.catId);
+    const approved = isApproved(p);
+    return `
+    <div class="timeline-item">
+      <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
+      <div class="tbody">
+        <div class="ttitle">${cat.name}</div>
+        <div class="rank-streak">${approved ? "aprobado" : statusLabel(p)}</div>
+      </div>
+      <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
+    </div>`;
+  }).join("");
+}
+
+document.getElementById("friendBack").addEventListener("click", () => showScreen(screenBeforeFriend));
+
+// ---------- render: estadísticas del perfil ----------
+let statsPeriod = "week";
+
+function bucketsForPeriod(period) {
+  const now = new Date();
+  const buckets = [];
+  if (period === "week") {
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now); d.setDate(now.getDate() - i);
+      const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const end = start + 86400000;
+      buckets.push({ label: ["D", "L", "M", "M", "J", "V", "S"][d.getDay()], start, end });
+    }
+  } else if (period === "month") {
+    for (let i = 4; i >= 0; i--) {
+      const end = new Date(now); end.setDate(now.getDate() - i * 7);
+      const endTs = end.getTime();
+      const startTs = endTs - 7 * 86400000;
+      buckets.push({ label: i === 0 ? "hoy" : `-${i}sem`, start: startTs, end: endTs });
+    }
+  } else {
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = d.getTime();
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+      buckets.push({ label: MONTH_NAMES[d.getMonth()].slice(0, 3), start, end });
+    }
+  }
+  return buckets;
+}
+
+function pointsInRange(userId, start, end) {
+  const byDay = dailyTotalsForUser(userId);
+  return Object.values(byDay)
+    .filter(d => d.ts >= start && d.ts < end)
+    .reduce((sum, d) => sum + d.total, 0);
+}
+
+function renderStatsChart(userId) {
+  const buckets = bucketsForPeriod(statsPeriod);
+  const values = buckets.map(b => pointsInRange(userId, b.start, b.end));
+  const max = Math.max(1, ...values);
+  document.getElementById("statsBarChart").innerHTML = buckets.map((b, i) => `
+    <div class="bar-col">
+      <div class="bar-value">${values[i] || ""}</div>
+      <div class="bar-fill" style="height:${Math.max(2, (values[i] / max) * 100)}%"></div>
+      <div class="bar-label">${b.label}</div>
+    </div>`).join("");
+}
+
+function renderFavCategory(userId, start, end) {
+  const counts = {};
+  state.posts
+    .filter(p => p.userId === userId && isApproved(p) && p.ts >= start && p.ts < end)
+    .forEach(p => { counts[p.catId] = (counts[p.catId] || 0) + 1; });
+  const box = document.getElementById("statsFavCat");
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) {
+    box.innerHTML = `<div class="empty-state">todavía no hay actividad en este período.</div>`;
+    return;
+  }
+  const [catId, count] = entries[0];
+  const cat = catById(catId);
+  box.innerHTML = `
+    <div class="fav-cat-row">
+      <div>
+        <div class="fav-cat-name">${cat.name}</div>
+        <div class="fav-cat-sub">${count} vez${count === 1 ? "" : "es"} en este período</div>
+      </div>
+      <div class="cat-tag">${cat.pts} pts base</div>
+    </div>`;
+}
+
+function renderTrend(userId, currentStart, currentEnd) {
+  const span = currentEnd - currentStart;
+  const prevStart = currentStart - span;
+  const prevEnd = currentStart;
+  const current = pointsInRange(userId, currentStart, currentEnd);
+  const previous = pointsInRange(userId, prevStart, prevEnd);
+  const box = document.getElementById("statsTrend");
+  let arrowCls = "flat", arrow = "→", text;
+  if (previous === 0 && current === 0) {
+    text = "todavía no hay suficiente historial para comparar.";
+  } else if (previous === 0) {
+    arrowCls = "up"; arrow = "↑";
+    text = `arrancaste este período con ${current} pts, antes no tenías nada registrado.`;
+  } else {
+    const diff = current - previous;
+    const pct = Math.round((diff / previous) * 100);
+    if (pct > 8) { arrowCls = "up"; arrow = "↑"; text = `vas subiendo: ${diff >= 0 ? "+" : ""}${pct}% vs el período anterior (${previous} → ${current} pts).`; }
+    else if (pct < -8) { arrowCls = "down"; arrow = "↓"; text = `estás bajando el ritmo: ${pct}% vs el período anterior (${previous} → ${current} pts).`; }
+    else { arrowCls = "flat"; arrow = "→"; text = `estás manteniendo el ritmo (${previous} → ${current} pts).`; }
+  }
+  box.innerHTML = `
+    <div class="trend-card">
+      <div class="trend-arrow ${arrowCls}">${arrow}</div>
+      <div class="trend-text">${text}</div>
+    </div>`;
+}
+
+function renderStatsTab(userId) {
+  const buckets = bucketsForPeriod(statsPeriod);
+  renderStatsChart(userId);
+  renderFavCategory(userId, buckets[0].start, buckets[buckets.length - 1].end);
+  renderTrend(userId, buckets[0].start, buckets[buckets.length - 1].end);
+}
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const tab = btn.dataset.tab;
+    document.getElementById("profileSummaryTab").classList.toggle("hidden", tab !== "summary");
+    document.getElementById("profileStatsTab").classList.toggle("hidden", tab !== "stats");
+    if (tab === "stats") renderStatsTab(state.currentUser);
+  });
+});
+document.querySelectorAll(".period-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    statsPeriod = btn.dataset.period;
+    renderStatsTab(state.currentUser);
+  });
+});
 
 document.getElementById("profileAvatar").addEventListener("click", () => {
   document.getElementById("avatarInput").click();
