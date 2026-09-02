@@ -47,11 +47,9 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.17";
+const APP_VERSION = "1.15";
 
 const CHANGELOG = [
-  { v: "1.17", changes: ["sección de análisis y estadísticas de rendimiento: tendencia semanal (mejorando/empeorando), gráfico de distribución de actividades y diagnóstico personalizado"] },
-  { v: "1.16", changes: ["personalización de perfil con biografía corta guardada en Firebase", "haz clic en el avatar o nombre de cualquier usuario para ver su perfil público completo con foto ampliable, biografía e historial"] },
   { v: "1.15", changes: ["mínimo de tiempo bajado a 15 min en todas las categorías por duración, con puntaje base más chico (se compensa con los bonus)"] },
   { v: "1.14", changes: ["puntos por tiempo con rendimiento decreciente: los primeros puntos extra son baratos, después cuestan más minutos, para que no compense quedarse horas farmeando", "los posts viejos con minutos se recalculan solos con la regla nueva"] },
   { v: "1.13", changes: ["deslizar entre fotos de un mismo post en modo grande", "opción de eliminar tus propios posts"] },
@@ -77,13 +75,13 @@ const state = {
   posts: [],
 };
 
-// ---------- utilidades ----------
 function catById(id) { return CATEGORIES.find(c => c.id === id); }
 function ptsForDuration(cat, minutes) {
   if (!cat.minMin) return cat.pts;
   const extraMin = Math.max(0, minutes - cat.minMin);
   return cat.pts + bonusPointsForExtraMinutes(extraMin, cat.bonusEvery, cat.maxBonus);
 }
+// primeros EASY_TIER puntos extra cuestan bonusEvery minutos c/u, después cuestan bonusEvery*SLOW_FACTOR
 const EASY_TIER = 3;
 const SLOW_FACTOR = 3;
 function bonusPointsForExtraMinutes(extraMin, bonusEvery, maxBonus) {
@@ -97,11 +95,10 @@ function bonusPointsForExtraMinutes(extraMin, bonusEvery, maxBonus) {
 }
 function userById(id) { return state.users.find(u => u.id === id); }
 function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
-function avatarHtml(u, size, extraClass = "") {
-  const cls = size ? `avatar ${size} ${extraClass}` : `avatar ${extraClass}`;
-  const userIdAttr = `data-user-id="${u.id}"`;
-  if (u.avatar) return `<div class="${cls}" style="background-image:url('${u.avatar}')" ${userIdAttr}></div>`;
-  return `<div class="${cls}" ${userIdAttr}>${initials(u.name)}</div>`;
+function avatarHtml(u, size) {
+  const cls = size ? `avatar ${size}` : "avatar";
+  if (u.avatar) return `<div class="${cls}" style="background-image:url('${u.avatar}')"></div>`;
+  return `<div class="${cls}">${initials(u.name)}</div>`;
 }
 
 function escapeHtml(str) {
@@ -116,7 +113,7 @@ async function hashPassword(pass) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ---------- identidad ----------
+// ---------- identidad (cómo te llamai) ----------
 async function initWhoami() {
   const overlay = document.getElementById("whoamiOverlay");
   if (state.currentUser && userById(state.currentUser)) {
@@ -245,7 +242,7 @@ function voterList(post) {
     const name = userById(uid)?.name || "?";
     const cls = v === "up" ? "up" : "down";
     const icon = v === "up" ? "✓" : "✕";
-    return `<span class="voter-chip ${cls} user-trigger" data-user-id="${uid}">${icon} ${escapeHtml(name)}</span>`;
+    return `<span class="voter-chip ${cls}">${icon} ${escapeHtml(name)}</span>`;
   }).join("");
   return `<div class="voter-list">${chips}</div>`;
 }
@@ -327,6 +324,8 @@ function showScreen(name) {
 document.querySelectorAll(".navbtn").forEach(btn => {
   btn.addEventListener("click", () => showScreen(btn.dataset.screen));
 });
+document.getElementById("aboutLink").addEventListener("click", () => showScreen("about"));
+document.getElementById("aboutBack").addEventListener("click", () => showScreen("profile"));
 
 // ---------- toast ----------
 function toast(msg) {
@@ -385,9 +384,9 @@ function renderFeed() {
     return `
     <div class="post-card">
       <div class="post-head">
-        ${avatarHtml(u, "", "user-trigger")}
+        ${avatarHtml(u)}
         <div class="who">
-          <div class="name user-trigger" data-user-id="${u.id}">${u.name}</div>
+          <div class="name">${u.name}</div>
           <div class="meta">${timeAgo(p.ts)}</div>
         </div>
         <div class="cat-tag">${cat.name}${p.minutes ? ` · ${p.minutes} min` : ""}</div>
@@ -440,7 +439,101 @@ function renderFeed() {
   });
 }
 
-// ---------- utilidad: comprimir foto ----------
+async function deletePost(postId) {
+  if (!confirm("¿Seguro que querés eliminar este post? No se puede deshacer.")) return;
+  try {
+    await deleteDoc(doc(db, "posts", postId));
+    toast("post eliminado");
+  } catch (err) {
+    toast("no se pudo eliminar, revisa tu conexión");
+  }
+}
+
+// ---------- lightbox ----------
+let lightboxPhotos = [];
+let lightboxIndex = 0;
+
+function openLightbox(photos, index) {
+  lightboxPhotos = photos || [];
+  lightboxIndex = index || 0;
+  renderLightbox();
+  document.getElementById("lightbox").classList.remove("hidden");
+}
+function closeLightbox() {
+  document.getElementById("lightbox").classList.add("hidden");
+  document.getElementById("lightboxImg").src = "";
+}
+function renderLightbox() {
+  document.getElementById("lightboxImg").src = lightboxPhotos[lightboxIndex];
+  const multi = lightboxPhotos.length > 1;
+  document.getElementById("lightboxPrev").style.display = multi ? "flex" : "none";
+  document.getElementById("lightboxNext").style.display = multi ? "flex" : "none";
+  document.getElementById("lightboxCounter").textContent = multi ? `${lightboxIndex + 1} / ${lightboxPhotos.length}` : "";
+}
+function lightboxStep(delta) {
+  if (!lightboxPhotos.length) return;
+  lightboxIndex = (lightboxIndex + delta + lightboxPhotos.length) % lightboxPhotos.length;
+  renderLightbox();
+}
+
+async function vote(postId, val) {
+  const post = state.posts.find(p => p.id === postId);
+  if (!post) return;
+  const votes = { ...(post.votes || {}) };
+  votes[state.currentUser] = votes[state.currentUser] === val ? undefined : val;
+  if (votes[state.currentUser] === undefined) delete votes[state.currentUser];
+  try {
+    await updateDoc(doc(db, "posts", postId), { votes });
+  } catch (err) {
+    toast("no se pudo votar, revisa tu conexión");
+  }
+}
+
+async function submitComment(postId) {
+  const input = document.querySelector(`.comment-input[data-post="${postId}"]`);
+  const text = input.value.trim();
+  if (!text) return;
+  const post = state.posts.find(p => p.id === postId);
+  if (!post) return;
+  const comments = [...(post.comments || []), { userId: state.currentUser, text, ts: Date.now() }];
+  input.value = "";
+  try {
+    await updateDoc(doc(db, "posts", postId), { comments });
+  } catch (err) {
+    toast("no se pudo comentar, revisa tu conexión");
+  }
+}
+
+// ---------- render: ranking ----------
+function renderRanking() {
+  const key = currentSeasonKey();
+  const rows = state.users
+    .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
+    .sort((a, b) => b.pts - a.pts);
+  document.getElementById("rankList").innerHTML = rows.map((r, i) => `
+    <div class="rank-row">
+      <div class="rank-num">${i + 1}</div>
+      ${avatarHtml(r.u)}
+      <div class="rank-info">
+        <div class="rank-name">${r.u.name}</div>
+        <div class="rank-streak">racha: ${r.streak} días</div>
+      </div>
+      <div class="rank-points">${r.pts}</div>
+    </div>`).join("");
+
+  const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
+  const past = document.getElementById("pastSeasons");
+  if (!seasonsSeen.length) {
+    past.innerHTML = `<div class="empty-state">todavía no hay temporadas cerradas.</div>`;
+    return;
+  }
+  past.innerHTML = seasonsSeen.map(k => {
+    const winner = [...state.users].map(u => ({ u, pts: pointsForUserInSeason(u.id, k) })).sort((a, b) => b.pts - a.pts)[0];
+    return `<div class="past-season"><span>${seasonLabelFor(k)}</span><span class="winner">ganó ${winner.u.name} · ${winner.pts} pts</span></div>`;
+  }).join("");
+}
+
+// ---------- utilidad: comprimir foto antes de guardar ----------
 function fileToCompressedDataUrl(file, maxDim = 900, quality = 0.6) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -622,925 +715,6 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
 });
 
 // ---------- render: perfil ----------
-function renderProfile() {
-  const u = userById(state.currentUser);
-  if (!u) return;
-  const avatarBtn = document.getElementById("profileAvatar");
-  if (u.avatar) {
-    avatarBtn.style.backgroundImage = `url('${u.avatar}')`;
-    avatarBtn.innerHTML = `<span class="avatar-edit-badge">📷</span>`;
-  } else {
-    avatarBtn.style.backgroundImage = "";
-    avatarBtn.innerHTML = `${initials(u.name)}<span class="avatar-edit-badge">📷</span>`;
-  }
-  document.getElementById("profileName").textContent = u.name;
-  document.getElementById("profileSub").textContent = `${totalPointsForUser(u.id)} pts histórico`;
-  document.getElementById("statTotal").textContent = totalPointsForUser(u.id);
-  document.getElementById("statMonth").textContent = pointsForUserInSeason(u.id, currentSeasonKey());
-  document.getElementById("statStreak").textContent = currentStreak(u.id);
-
-  // Biografía
-  const bioEl = document.getElementById("profileBio");
-  if (u.bio && u.bio.trim()) {
-    bioEl.textContent = u.bio;
-    bioEl.classList.remove("empty");
-  } else {
-    bioEl.textContent = "Aún no tienes biografía. ¡Escribe una corta sobre ti!";
-    bioEl.classList.add("empty");
-  }
-
-  // Renderizar analytics del perfil
-  const analytics = getUserAnalytics(u.id);
-  document.getElementById("profileAnalytics").innerHTML = renderAnalyticsHtml(analytics);
-
-  const mine = state.posts.filter(p => p.userId === state.currentUser).sort((a, b) => b.ts - a.ts);
-  const list = document.getElementById("timelineList");
-  if (!mine.length) {
-    list.innerHTML = `<div class="empty-state">todavía no hay nada en tu bitácora.</div>`;
-    return;
-  }
-  list.innerHTML = mine.map(p => {
-    const d = new Date(p.ts);
-    const cat = catById(p.catId);
-    const approved = isApproved(p);
-    return `
-    <div class="timeline-item">
-      <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
-      <div class="tbody">
-        <div class="ttitle">${cat.name}</div>
-        <div class="rank-streak">${approved ? "aprobado" : statusLabel(p)}</div>
-      </div>
-      <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
-    </div>`;
-  }).join("");
-}
-
-// ---------- render: ranking ----------
-function renderRanking() {
-  const key = currentSeasonKey();
-  const rows = state.users
-    .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
-    .sort((a, b) => b.pts - a.pts);
-  document.getElementById("rankList").innerHTML = rows.map((r, i) => `
-    <div class="rank-row user-trigger" data-user-id="${r.u.id}">
-      <div class="rank-num">${i + 1}</div>
-      ${avatarHtml(r.u)}
-      <div class="rank-info">
-        <div class="rank-name">${r.u.name}</div>
-        <div class="rank-streak">racha: ${r.streak} días</div>
-      </div>
-      <div class="rank-points">${r.pts}</div>
-    </div>`).join("");
-
-  const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
-  const past = document.getElementById("pastSeasons");
-  if (!seasonsSeen.length) {
-    past.innerHTML = `<div class="empty-state">todavía no hay temporadas cerradas.</div>`;
-    return;
-  }
-  past.innerHTML = seasonsSeen.map(k => {
-    const winner = [...state.users].map(u => ({ u, pts: pointsForUserInSeason(u.id, k) })).sort((a, b) => b.pts - a.pts)[0];
-    return `<div class="past-season"><span>${seasonLabelFor(k)}</span><span class="winner">ganó ${winner.u.name} · ${winner.pts} pts</span></div>`;
-  }).join("");
-}
-
-// ---------- utilidad: comprimir foto ----------
-function fileToCompressedDataUrl(file, maxDim = 900, quality = 0.6) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = () => { img.src = reader.result; };
-    reader.onerror = reject;
-    img.onload = () => {
-      let { width, height } = img;
-      if (width > height && width > maxDim) {
-        height = Math.round(height * (maxDim / width));
-        width = maxDim;
-      } else if (height > maxDim) {
-        width = Math.round(width * (maxDim / height));
-        height = maxDim;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", quality));
-    };
-    img.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// ---------- render: ranking ----------
-function renderRanking() {
-  const key = currentSeasonKey();
-  const rows = state.users
-    .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
-    .sort((a, b) => b.pts - a.pts);
-  document.getElementById("rankList").innerHTML = rows.map((r, i) => `
-    <div class="rank-row user-trigger" data-user-id="${r.u.id}">
-      <div class="rank-num">${i + 1}</div>
-      ${avatarHtml(r.u)}
-      <div class="rank-info">
-        <div class="rank-name">${r.u.name}</div>
-        <div class="rank-streak">racha: ${r.streak} días</div>
-      </div>
-      <div class="rank-points">${r.pts}</div>
-    </div>`).join("");
-
-  const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
-  const past = document.getElementById("pastSeasons");
-  if (!seasonsSeen.length) {
-    past.innerHTML = `<div class="empty-state">todavía no hay temporadas cerradas.</div>`;
-    return;
-  }
-  past.innerHTML = seasonsSeen.map(k => {
-    const winner = [...state.users].map(u => ({ u, pts: pointsForUserInSeason(u.id, k) })).sort((a, b) => b.pts - a.pts)[0];
-    return `<div class="past-season"><span>${seasonLabelFor(k)}</span><span class="winner">ganó ${winner.u.name} · ${winner.pts} pts</span></div>`;
-  }).join("");
-}
-
-// ---------- cálculo de estadísticas y análisis ----------
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-
-function getUserAnalytics(userId) {
-  const userPosts = state.posts.filter(p => p.userId === userId && isApproved(p));
-  if (!userPosts.length) return null;
-
-  const now = Date.now();
-  const last7DaysPosts = userPosts.filter(p => (now - p.ts) <= WEEK_MS);
-  const prev7DaysPosts = userPosts.filter(p => (now - p.ts) > WEEK_MS && (now - p.ts) <= (WEEK_MS * 2));
-
-  const last7Pts = last7DaysPosts.reduce((sum, p) => sum + p.pts, 0);
-  const prev7Pts = prev7DaysPosts.reduce((sum, p) => sum + p.pts, 0);
-
-  // Tendencia
-  let trend = "neutral";
-  let trendText = "⚡ Mantienes ritmo constante";
-  let diffPct = 0;
-
-  if (prev7Pts === 0 && last7Pts > 0) {
-    trend = "up";
-    trendText = "📈 ¡En alza esta semana!";
-  } else if (prev7Pts > 0) {
-    diffPct = Math.round(((last7Pts - prev7Pts) / prev7Pts) * 100);
-    if (diffPct >= 15) {
-      trend = "up";
-      trendText = `📈 +${diffPct}% respecto a la semana pasada`;
-    } else if (diffPct <= -15) {
-      trend = "down";
-      trendText = `📉 ${diffPct}% respecto a la semana pasada`;
-    } else {
-      trend = "neutral";
-      trendText = `⚡ Mismo nivel (${diffPct >= 0 ? "+" : ""}${diffPct}%)`;
-    }
-  }
-
-  // Desglose por categoría
-  const catTotals = {};
-  let totalPtsAll = 0;
-  userPosts.forEach(p => {
-    catTotals[p.catId] = (catTotals[p.catId] || 0) + p.pts;
-    totalPtsAll += p.pts;
-  });
-
-  const catDistribution = Object.entries(catTotals)
-    .map(([catId, pts]) => ({
-      cat: catById(catId),
-      pts,
-      pct: Math.round((pts / totalPtsAll) * 100)
-    }))
-    .sort((a, b) => b.pts - a.pts);
-
-  // Día más activo
-  const dayCounts = [0, 0, 0, 0, 0, 0, 0];
-  userPosts.forEach(p => {
-    const day = new Date(p.ts).getDay();
-    dayCounts[day]++;
-  });
-  const maxDayIdx = dayCounts.indexOf(Math.max(...dayCounts));
-  const topDayName = DAY_NAMES[maxDayIdx];
-
-  // Insight
-  const topCat = catDistribution[0]?.cat?.name || "actividades";
-  let insight = `Tu enfoque principal es **${topCat}** (${catDistribution[0]?.pct || 0}% de tu esfuerzo).`;
-  if (trend === "up") {
-    insight += " ¡Excelente progreso esta semana!";
-  } else if (trend === "down") {
-    insight += " Bajaste la intensidad últimamente, ¡a recuperar el impulso!";
-  } else {
-    insight += ` Tus días con más publicaciones suelen ser los **${topDayName}**.`;
-  }
-
-  return {
-    trend,
-    trendText,
-    last7Pts,
-    prev7Pts,
-    last7Count: last7DaysPosts.length,
-    prev7Count: prev7DaysPosts.length,
-    catDistribution,
-    topDayName,
-    insight
-  };
-}
-
-function renderAnalyticsHtml(analytics) {
-  if (!analytics) {
-    return `<div class="empty-state" style="padding:15px 0">Aún no hay suficiente actividad para generar análisis.</div>`;
-  }
-
-  const distHtml = analytics.catDistribution.slice(0, 4).map(d => `
-    <div class="cat-dist-row">
-      <div class="cat-dist-info">
-        <span class="cat-dist-name">${d.cat.name}</span>
-        <span class="cat-dist-pts">${d.pts} pts (${d.pct}%)</span>
-      </div>
-      <div class="cat-dist-bar-bg">
-        <div class="cat-dist-bar-fill" style="width: ${d.pct}%"></div>
-      </div>
-    </div>
-  `).join("");
-
-  return `
-    <div class="trend-badge ${analytics.trend}">${analytics.trendText}</div>
-    
-    <div class="analytics-comparison">
-      <div class="comp-box">
-        <div class="c-label">ÚLTIMOS 7 DÍAS</div>
-        <div class="c-val">${analytics.last7Pts} pts</div>
-        <div class="c-sub">${analytics.last7Count} actividades</div>
-      </div>
-      <div class="comp-box">
-        <div class="c-label">SEMANA ANTERIOR</div>
-        <div class="c-val">${analytics.prev7Pts} pts</div>
-        <div class="c-sub">${analytics.prev7Count} actividades</div>
-      </div>
-    </div>
-
-    <div class="cat-distribution">
-      <div class="c-label" style="font-size:11px; color:var(--ink-soft); margin-bottom:2px">DISTRIBUCIÓN DE HÁBITOS</div>
-      ${distHtml}
-    </div>
-
-    <div class="analytics-insight">
-      💡 ${escapeHtml(analytics.insight).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}
-    </div>
-  `;
-}
-
-// ---------- render: ranking ----------
-function renderRanking() {
-  const key = currentSeasonKey();
-  const rows = state.users
-    .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
-    .sort((a, b) => b.pts - a.pts);
-  const rankList = document.getElementById("rankList");
-  rankList.innerHTML = rows.map((r, i) => `
-    <div class="rank-row user-trigger" data-user-id="${r.u.id}">
-      <div class="rank-num">${i + 1}</div>
-      ${avatarHtml(r.u)}
-      <div class="rank-info">
-        <div class="rank-name">${r.u.name}</div>
-        <div class="rank-streak">racha: ${r.streak} días</div>
-      </div>
-      <div class="rank-points">${r.pts}</div>
-    </div>`).join("");
-
-  bindUserTriggers(rankList);
-
-  const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
-  const past = document.getElementById("pastSeasons");
-  if (!seasonsSeen.length) {
-    past.innerHTML = `<div class="empty-state">todavía no hay temporadas cerradas.</div>`;
-    return;
-  }
-  past.innerHTML = seasonsSeen.map(k => {
-    const winner = [...state.users].map(u => ({ u, pts: pointsForUserInSeason(u.id, k) })).sort((a, b) => b.pts - a.pts)[0];
-    return `<div class="past-season"><span>${seasonLabelFor(k)}</span><span class="winner">ganó ${winner.u.name} · ${winner.pts} pts</span></div>`;
-  }).join("");
-}
-
-// ---------- render: profile ----------
-function renderProfile() {
-  const u = userById(state.currentUser);
-  if (!u) return;
-
-  const avatarBtn = document.getElementById("profileAvatar");
-  if (u.avatar) {
-    avatarBtn.style.backgroundImage = `url('${u.avatar}')`;
-    avatarBtn.innerHTML = `<span class="avatar-edit-badge">📷</span>`;
-  } else {
-    avatarBtn.style.backgroundImage = "";
-    avatarBtn.innerHTML = `${initials(u.name)}<span class="avatar-edit-badge">📷</span>`;
-  }
-  document.getElementById("profileName").textContent = u.name;
-  document.getElementById("profileSub").textContent = `${totalPointsForUser(u.id)} pts histórico`;
-  document.getElementById("statTotal").textContent = totalPointsForUser(u.id);
-  document.getElementById("statMonth").textContent = pointsForUserInSeason(u.id, currentSeasonKey());
-  document.getElementById("statStreak").textContent = currentStreak(u.id);
-
-  // Biografía
-  const bioEl = document.getElementById("profileBio");
-  if (u.bio && u.bio.trim()) {
-    bioEl.textContent = u.bio;
-    bioEl.classList.remove("empty");
-  } else {
-    bioEl.textContent = "Aún no tienes biografía. ¡Escribe una corta sobre ti!";
-    bioEl.classList.add("empty");
-  }
-
-  // Analytics
-  const analytics = getUserAnalytics(u.id);
-  document.getElementById("profileAnalytics").innerHTML = renderAnalyticsHtml(analytics);
-
-  const mine = state.posts.filter(p => p.userId === state.currentUser).sort((a, b) => b.ts - a.ts);
-  const list = document.getElementById("timelineList");
-  if (!mine.length) {
-    list.innerHTML = `<div class="empty-state">todavía no hay nada en tu bitácora.</div>`;
-    return;
-  }
-  list.innerHTML = mine.map(p => {
-    const d = new Date(p.ts);
-    const cat = catById(p.catId);
-    const approved = isApproved(p);
-    return `
-    <div class="timeline-item">
-      <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
-      <div class="tbody">
-        <div class="ttitle">${cat.name}</div>
-        <div class="rank-streak">${approved ? "aprobado" : statusLabel(p)}</div>
-      </div>
-      <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
-    </div>`;
-  }).join("");
-}
-
-// ---------- render: ranking ----------
-function renderRanking() {
-  const key = currentSeasonKey();
-  const rows = state.users
-    .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
-    .sort((a, b) => b.pts - a.pts);
-  const rankList = document.getElementById("rankList");
-  rankList.innerHTML = rows.map((r, i) => `
-    <div class="rank-row user-trigger" data-user-id="${r.u.id}">
-      <div class="rank-num">${i + 1}</div>
-      ${avatarHtml(r.u)}
-      <div class="rank-info">
-        <div class="rank-name">${r.u.name}</div>
-        <div class="rank-streak">racha: ${r.streak} días</div>
-      </div>
-      <div class="rank-points">${r.pts}</div>
-    </div>`).join("");
-
-  bindUserTriggers(rankList);
-
-  const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
-  const past = document.getElementById("pastSeasons");
-  if (!seasonsSeen.length) {
-    past.innerHTML = `<div class="empty-state">todavía no hay temporadas cerradas.</div>`;
-    return;
-  }
-  past.innerHTML = seasonsSeen.map(k => {
-    const winner = [...state.users].map(u => ({ u, pts: pointsForUserInSeason(u.id, k) })).sort((a, b) => b.pts - a.pts)[0];
-    return `<div class="past-season"><span>${seasonLabelFor(k)}</span><span class="winner">ganó ${winner.u.name} · ${winner.pts} pts</span></div>`;
-  }).join("");
-}
-
-// ---------- render: profile public modal ----------
-let activeModalAvatarUrl = null;
-
-function openUserProfileModal(userId) {
-  const u = userById(userId);
-  if (!u) return;
-
-  const modalOverlay = document.getElementById("userModalOverlay");
-  const avatarEl = document.getElementById("modalUserAvatar");
-  const nameEl = document.getElementById("modalUserName");
-  const subEl = document.getElementById("modalUserSub");
-  const bioEl = document.getElementById("modalUserBio");
-
-  nameEl.textContent = u.name;
-  subEl.textContent = `${totalPointsForUser(u.id)} pts histórico`;
-
-  if (u.avatar) {
-    avatarEl.style.backgroundImage = `url('${u.avatar}')`;
-    avatarEl.textContent = "";
-    activeModalAvatarUrl = u.avatar;
-  } else {
-    avatarEl.style.backgroundImage = "";
-    avatarEl.textContent = initials(u.name);
-    activeModalAvatarUrl = null;
-  }
-
-  if (u.bio && u.bio.trim()) {
-    bioEl.textContent = u.bio;
-    bioEl.classList.remove("empty");
-  } else {
-    bioEl.textContent = "Sin biografía todavía.";
-    bioEl.classList.add("empty");
-  }
-
-  document.getElementById("modalStatTotal").textContent = totalPointsForUser(u.id);
-  document.getElementById("modalStatMonth").textContent = pointsForUserInSeason(u.id, currentSeasonKey());
-  document.getElementById("modalStatStreak").textContent = currentStreak(u.id);
-
-  // Render analytics in modal
-  const analytics = getUserAnalytics(u.id);
-  document.getElementById("modalAnalytics").innerHTML = renderAnalyticsHtml(analytics);
-
-  const approvedPosts = state.posts
-    .filter(p => p.userId === u.id && isApproved(p))
-    .sort((a, b) => b.ts - a.ts);
-
-  const timelineEl = document.getElementById("modalTimelineList");
-  if (!approvedPosts.length) {
-    timelineEl.innerHTML = `<div class="empty-state">sin actividad aprobada todavía.</div>`;
-  } else {
-    timelineEl.innerHTML = approvedPosts.map(p => {
-      const d = new Date(p.ts);
-      const cat = catById(p.catId);
-      return `
-      <div class="timeline-item">
-        <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
-        <div class="tbody">
-          <div class="ttitle">${cat.name}${p.minutes ? ` · ${p.minutes} min` : ""}</div>
-        </div>
-        <div class="tpts">+${p.pts}</div>
-      </div>`;
-    }).join("");
-  }
-
-  modalOverlay.classList.remove("hidden");
-}
-
-function closeUserProfileModal() {
-  document.getElementById("userModalOverlay").classList.add("hidden");
-}
-
-document.getElementById("userModalClose").addEventListener("click", closeUserProfileModal);
-document.getElementById("userModalOverlay").addEventListener("click", (e) => {
-  if (e.target.id === "userModalOverlay") closeUserProfileModal();
-});
-
-document.getElementById("modalUserAvatar").addEventListener("click", () => {
-  if (activeModalAvatarUrl) {
-    openLightbox([activeModalAvatarUrl], 0);
-  }
-});
-
-// ---------- toast ----------
-function toast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 1800);
-}
-
-// ---------- render: feed ----------
-function renderFeed() {
-  renderTopbar();
-  const list = document.getElementById("feedList");
-  const posts = [...state.posts].sort((a, b) => b.ts - a.ts);
-  if (!posts.length) {
-    list.innerHTML = `<div class="empty-state">nadie publicó todavía. arrancá vos.</div>`;
-    return;
-  }
-  list.innerHTML = posts.map(p => {
-    const u = userById(p.userId);
-    if (!u) return "";
-    const cat = catById(p.catId);
-    const approved = isApproved(p);
-    const myVote = (p.votes || {})[state.currentUser];
-    const isMine = p.userId === state.currentUser;
-    const restNote = p.catId === "nada" ? `<div class="rest-note">el descanso también cuenta.</div>` : "";
-    const photos = p.photos && p.photos.length
-      ? `<div class="post-photos ${p.photos.length > 1 ? "multi" : ""}">${p.photos.map((src, i) => `<img src="${src}" alt="foto de prueba" class="zoomable-photo" data-post="${p.id}" data-idx="${i}">`).join("")}</div>`
-      : `<div class="post-photo">sin foto</div>`;
-    const desc = p.desc ? `<div class="post-desc">${escapeHtml(p.desc)}</div>` : "";
-    const combo = approved ? comboActiveForPost(p) : null;
-    const comboTag = combo ? `<div class="combo-tag">🔗 combo ${combo.label} ×${combo.mult}</div>` : "";
-    const comments = p.comments || [];
-    const commentsHtml = comments.map(c => `
-      <div class="comment-row">
-        <span class="comment-name">${userById(c.userId)?.name || "?"}</span>
-        <span class="comment-text">${escapeHtml(c.text)}</span>
-      </div>`).join("");
-    return `
-    <div class="post-card">
-      <div class="post-head">
-        ${avatarHtml(u, "", "user-trigger")}
-        <div class="who">
-          <div class="name user-trigger" data-user-id="${u.id}">${u.name}</div>
-          <div class="meta">${timeAgo(p.ts)}</div>
-        </div>
-        <div class="cat-tag">${cat.name}${p.minutes ? ` · ${p.minutes} min` : ""}</div>
-      </div>
-      ${photos}
-      ${desc}
-      ${restNote}
-      ${comboTag}
-      <div class="post-foot">
-        <div class="points-badge">${approved ? "+" + p.pts + " pts" : statusLabel(p)}</div>
-        ${isMine
-          ? `<div class="verify-status">${approvalsCount(p)} aprobación${approvalsCount(p) === 1 ? "" : "es"}</div>`
-          : `<div class="verify-row">
-              <button class="vbtn approve ${myVote === "up" ? "active" : ""}" data-post="${p.id}" data-vote="up">✓ va</button>
-              <button class="vbtn reject ${myVote === "down" ? "active" : ""}" data-post="${p.id}" data-vote="down">✕ sospechoso</button>
-            </div>`
-        }
-      </div>
-      ${isMine ? `<button class="delete-post-btn" data-post="${p.id}">eliminar post</button>` : ""}
-      ${voterList(p)}
-      <div class="comments-block">
-        ${commentsHtml}
-        <div class="comment-input-row">
-          <input type="text" class="comment-input" placeholder="deja un comentario..." data-post="${p.id}">
-          <button class="comment-send" data-post="${p.id}">enviar</button>
-        </div>
-      </div>
-    </div>`;
-  }).join("");
-
-  list.querySelectorAll(".vbtn").forEach(btn => {
-    btn.addEventListener("click", () => vote(btn.dataset.post, btn.dataset.vote));
-  });
-  list.querySelectorAll(".comment-send").forEach(btn => {
-    btn.addEventListener("click", () => submitComment(btn.dataset.post));
-  });
-  list.querySelectorAll(".comment-input").forEach(input => {
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") submitComment(input.dataset.post);
-    });
-  });
-  list.querySelectorAll(".zoomable-photo").forEach(img => {
-    img.addEventListener("click", () => {
-      const post = state.posts.find(p => p.id === img.dataset.post);
-      if (post) openLightbox(post.photos, Number(img.dataset.idx));
-    });
-  });
-  list.querySelectorAll(".delete-post-btn").forEach(btn => {
-    btn.addEventListener("click", () => deletePost(btn.dataset.post));
-  });
-}
-
-async function deletePost(postId) {
-  if (!confirm("¿Seguro que querés eliminar este post? No se puede deshacer.")) return;
-  try {
-    await deleteDoc(doc(db, "posts", postId));
-    toast("post eliminado");
-  } catch (err) {
-    toast("no se pudo eliminar, revisa tu conexión");
-  }
-}
-
-// ---------- lightbox ----------
-let lightboxPhotos = [];
-let lightboxIndex = 0;
-
-function openLightbox(photos, index) {
-  lightboxPhotos = photos || [];
-  lightboxIndex = index || 0;
-  renderLightbox();
-  document.getElementById("lightbox").classList.remove("hidden");
-}
-function closeLightbox() {
-  document.getElementById("lightbox").classList.add("hidden");
-  document.getElementById("lightboxImg").src = "";
-}
-function renderLightbox() {
-  document.getElementById("lightboxImg").src = lightboxPhotos[lightboxIndex];
-  const multi = lightboxPhotos.length > 1;
-  document.getElementById("lightboxPrev").style.display = multi ? "flex" : "none";
-  document.getElementById("lightboxNext").style.display = multi ? "flex" : "none";
-  document.getElementById("lightboxCounter").textContent = multi ? `${lightboxIndex + 1} / ${lightboxPhotos.length}` : "";
-}
-function lightboxStep(delta) {
-  if (!lightboxPhotos.length) return;
-  lightboxIndex = (lightboxIndex + delta + lightboxPhotos.length) % lightboxPhotos.length;
-  renderLightbox();
-}
-
-async function vote(postId, val) {
-  const post = state.posts.find(p => p.id === postId);
-  if (!post) return;
-  const votes = { ...(post.votes || {}) };
-  votes[state.currentUser] = votes[state.currentUser] === val ? undefined : val;
-  if (votes[state.currentUser] === undefined) delete votes[state.currentUser];
-  try {
-    await updateDoc(doc(db, "posts", postId), { votes });
-  } catch (err) {
-    toast("no se pudo votar, revisa tu conexión");
-  }
-}
-
-async function submitComment(postId) {
-  const input = document.querySelector(`.comment-input[data-post="${postId}"]`);
-  const text = input.value.trim();
-  if (!text) return;
-  const post = state.posts.find(p => p.id === postId);
-  if (!post) return;
-  const comments = [...(post.comments || []), { userId: state.currentUser, text, ts: Date.now() }];
-  input.value = "";
-  try {
-    await updateDoc(doc(db, "posts", postId), { comments });
-  } catch (err) {
-    toast("no se pudo comentar, revisa tu conexión");
-  }
-}
-
-// ---------- render: ranking ----------
-function renderRanking() {
-  const key = currentSeasonKey();
-  const rows = state.users
-    .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
-    .sort((a, b) => b.pts - a.pts);
-  document.getElementById("rankList").innerHTML = rows.map((r, i) => `
-    <div class="rank-row user-trigger" data-user-id="${r.u.id}">
-      <div class="rank-num">${i + 1}</div>
-      ${avatarHtml(r.u)}
-      <div class="rank-info">
-        <div class="rank-name">${r.u.name}</div>
-        <div class="rank-streak">racha: ${r.streak} días</div>
-      </div>
-      <div class="rank-points">${r.pts}</div>
-    </div>`).join("");
-
-  const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
-  const past = document.getElementById("pastSeasons");
-  if (!seasonsSeen.length) {
-    past.innerHTML = `<div class="empty-state">todavía no hay temporadas cerradas.</div>`;
-    return;
-  }
-  past.innerHTML = seasonsSeen.map(k => {
-    const winner = [...state.users].map(u => ({ u, pts: pointsForUserInSeason(u.id, k) })).sort((a, b) => b.pts - a.pts)[0];
-    return `<div class="past-season"><span>${seasonLabelFor(k)}</span><span class="winner">ganó ${winner.u.name} · ${winner.pts} pts</span></div>`;
-  }).join("");
-}
-
-// ---------- utilidad: comprimir foto ----------
-function fileToCompressedDataUrl(file, maxDim = 900, quality = 0.6) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = () => { img.src = reader.result; };
-    reader.onerror = reject;
-    img.onload = () => {
-      let { width, height } = img;
-      if (width > height && width > maxDim) {
-        height = Math.round(height * (maxDim / width));
-        width = maxDim;
-      } else if (height > maxDim) {
-        width = Math.round(width * (maxDim / height));
-        height = maxDim;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", quality));
-    };
-    img.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// ---------- render: publish ----------
-function renderPublish() {
-  selectedCat = null;
-  pendingPhotos = [];
-  document.getElementById("descInput").value = "";
-  renderPhotoGrid();
-  bindPublishEvents();
-  document.getElementById("comboInfo").innerHTML = COMBOS.map(c => `
-    <div class="combo-info-row">
-      <span>${c.cats.map(id => catById(id).name).join(" + ")}</span>
-      <span class="combo-info-mult">×${c.mult}</span>
-    </div>`).join("");
-  document.getElementById("catGrid").innerHTML = CATEGORIES.map(c => `
-    <button class="cat-choice" data-cat="${c.id}" title="${escapeHtml(c.desc)}">
-      <div class="cname">${c.name}</div>
-      <div class="cpts">${c.pts} pts</div>
-      <div class="cdesc">${escapeHtml(c.desc)}</div>
-    </button>`).join("");
-  document.querySelectorAll(".cat-choice").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".cat-choice").forEach(b => b.classList.remove("selected"));
-      btn.classList.add("selected");
-      selectedCat = btn.dataset.cat;
-      renderDurationField();
-      checkPublishReady();
-    });
-  });
-  renderDurationField();
-  checkPublishReady();
-}
-
-function renderDurationField() {
-  const box = document.getElementById("durationBox");
-  const cat = catById(selectedCat);
-  if (!cat || !cat.minMin) {
-    box.innerHTML = "";
-    return;
-  }
-  box.innerHTML = `
-    <div class="section-title" style="margin-top:20px">¿Cuánto tiempo?</div>
-    <input type="number" id="durationInput" class="whoami-input" placeholder="minutos" min="1" style="text-align:left;padding-left:16px">
-    <div class="duration-hint" id="durationHint">
-      mínimo ${cat.minMin} min para los ${cat.pts} pts base. los primeros ${EASY_TIER} pts extra cuestan ${cat.bonusEvery} min c/u, después cuestan ${cat.bonusEvery * SLOW_FACTOR} min c/u (hasta +${cat.maxBonus}).
-    </div>
-  `;
-  document.getElementById("durationInput").addEventListener("input", () => {
-    updateDurationHint();
-    checkPublishReady();
-  });
-}
-
-function updateDurationHint() {
-  const cat = catById(selectedCat);
-  const hint = document.getElementById("durationHint");
-  const input = document.getElementById("durationInput");
-  if (!cat || !hint || !input) return;
-  const minutes = Number(input.value);
-  if (!minutes) {
-    hint.textContent = `mínimo ${cat.minMin} min para los ${cat.pts} pts base. los primeros ${EASY_TIER} pts extra cuestan ${cat.bonusEvery} min c/u, después ${cat.bonusEvery * SLOW_FACTOR} min c/u (hasta +${cat.maxBonus}).`;
-    hint.classList.remove("bad");
-    return;
-  }
-  if (minutes < cat.minMin) {
-    hint.textContent = `te faltan ${cat.minMin - minutes} min para llegar al mínimo (${cat.minMin} min).`;
-    hint.classList.add("bad");
-  } else {
-    const total = ptsForDuration(cat, minutes);
-    hint.textContent = `con ${minutes} min te quedan ${total} pts.`;
-    hint.classList.remove("bad");
-  }
-}
-
-function currentDurationValid() {
-  const cat = catById(selectedCat);
-  if (!cat || !cat.minMin) return true;
-  const input = document.getElementById("durationInput");
-  const minutes = Number(input?.value || 0);
-  return minutes >= cat.minMin;
-}
-
-function renderPhotoGrid() {
-  const grid = document.getElementById("photoGrid");
-  grid.innerHTML = pendingPhotos.map((src, i) => `
-    <div class="photo-thumb">
-      <img src="${src}" alt="foto ${i + 1}">
-      <button class="photo-remove" data-idx="${i}">✕</button>
-    </div>`).join("") + `
-    <button class="photo-add" id="addPhotoBtn">+</button>`;
-
-  grid.querySelectorAll(".photo-remove").forEach(btn => {
-    btn.addEventListener("click", () => {
-      pendingPhotos.splice(Number(btn.dataset.idx), 1);
-      renderPhotoGrid();
-      checkPublishReady();
-    });
-  });
-  document.getElementById("addPhotoBtn").addEventListener("click", () => {
-    document.getElementById("fileInput").click();
-  });
-}
-
-function bindPublishEvents() {
-  const input = document.getElementById("fileInput");
-  input.onchange = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length) toast("dale, procesando las fotos...");
-    for (const file of files) {
-      try {
-        pendingPhotos.push(await fileToCompressedDataUrl(file));
-      } catch (err) { /* ignore fallo de una foto */ }
-    }
-    e.target.value = "";
-    renderPhotoGrid();
-    checkPublishReady();
-  };
-}
-
-function checkPublishReady() {
-  document.getElementById("publishBtn").disabled = !(selectedCat && pendingPhotos.length > 0 && currentDurationValid());
-}
-
-document.getElementById("publishBtn").addEventListener("click", async () => {
-  if (!selectedCat || !pendingPhotos.length || !currentDurationValid()) return;
-  const cat = catById(selectedCat);
-  const durationInput = document.getElementById("durationInput");
-  const minutes = cat.minMin ? Number(durationInput.value) : null;
-  const pts = cat.minMin ? ptsForDuration(cat, minutes) : cat.pts;
-  const btn = document.getElementById("publishBtn");
-  btn.disabled = true;
-  btn.textContent = "publicando...";
-  try {
-    await addDoc(postsCol, {
-      userId: state.currentUser,
-      catId: cat.id,
-      pts,
-      minutes: minutes || null,
-      ts: Date.now(),
-      votes: {},
-      photos: pendingPhotos,
-      desc: document.getElementById("descInput").value.trim(),
-      comments: [],
-    });
-    toast("subido. a esperar que te aprueben 👀");
-    showScreen("feed");
-  } catch (err) {
-    toast("no se pudo publicar, revisa tu conexión");
-  } finally {
-    btn.textContent = "publicar";
-  }
-});
-
-// ---------- render: profile ----------
-function renderProfile() {
-  const u = userById(state.currentUser);
-  if (!u) return;
-  const avatarBtn = document.getElementById("profileAvatar");
-  if (u.avatar) {
-    avatarBtn.style.backgroundImage = `url('${u.avatar}')`;
-    avatarBtn.innerHTML = `<span class="avatar-edit-badge">📷</span>`;
-  } else {
-    avatarBtn.style.backgroundImage = "";
-    avatarBtn.innerHTML = `${initials(u.name)}<span class="avatar-edit-badge">📷</span>`;
-  }
-  document.getElementById("profileName").textContent = u.name;
-  document.getElementById("profileSub").textContent = `${totalPointsForUser(u.id)} pts histórico`;
-  document.getElementById("statTotal").textContent = totalPointsForUser(u.id);
-  document.getElementById("statMonth".textContent = pointsForUserInSeason(u.id, currentSeasonKey());
-  document.getElementById("statStreak").textContent = currentStreak(u.id);
-
-  // Biografía
-  const bioEl = document.getElementById("profileBio");
-  if (u.bio && u.bio.trim()) {
-    bioEl.textContent = u.bio;
-    bioEl.classList.remove("empty");
-  } else {
-    bioEl.textContent = "Aún no tienes biografía. ¡Escribe una corta sobre ti!";
-    bioEl.classList.add("empty");
-  }
-
-  // Analytics
-  const analytics = getUserAnalytics(u.id);
-  document.getElementById("profileAnalytics").innerHTML = renderAnalyticsHtml(analytics);
-
-  const mine = state.posts.filter(p => p.userId === state.currentUser).sort((a, b) => b.ts - a.ts);
-  const list = document.getElementById("timelineList");
-  if (!mine.length) {
-    list.innerHTML = `<div class="empty-state">todavía no hay nada en tu bitácora.</div>`;
-    return;
-  }
-  list.innerHTML = mine.map(p => {
-    const d = new Date(p.ts);
-    const cat = catById(p.catId);
-    const approved = isApproved(p);
-    return `
-    <div class="timeline-item">
-      <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
-      <div class="tbody">
-        <div class="ttitle">${cat.name}</div>
-        <div class="rank-streak">${approved ? "aprobado" : statusLabel(p)}</div>
-      </div>
-      <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
-    </div>`;
-  }).join("");
-}
-
-// ---------- render: ranking ----------
-function renderRanking() {
-  const key = currentSeasonKey();
-  const rows = state.users
-    .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
-    .sort((a, b) => b.pts - a.pts);
-  document.getElementById("rankList").innerHTML = rows.map((r, i) => `
-    <div class="rank-row user-trigger" data-user-id="${r.u.id}">
-      <div class="rank-num">${i + 1}</div>
-      ${avatarHtml(r.u)}
-      <div class="rank-info">
-        <div class="rank-name">${r.u.name}</div>
-        <div class="rank-streak">racha: ${r.streak} días</div>
-      </div>
-      <div class="rank-points">${r.pts}</div>
-    </div>`).join("");
-
-  const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
-  const past = document.getElementById("pastSeasons");
-  if (!seasonsSeen.length) {
-    past.innerHTML = `<div class="empty-state">todavía no hay temporadas cerradas.</div>`;
-    return;
-  }
-  past.innerHTML = seasonsSeen.map(k => {
-    const winner = [...state.users].map(u => ({ u, pts: pointsForUserInSeason(u.id, k) })).sort((a, b) => b.pts - a.pts)[0];
-    return `<div class="past-season"><span>${seasonLabelFor(k)}</span><span class="winner">ganó ${winner.u.name} · ${winner.pts} pts</span></div>`;
-  }).join("");
-}
-
 // ---------- render: acerca de ----------
 function renderAbout() {
   document.getElementById("aboutVersion").textContent = `versión ${APP_VERSION}`;
@@ -1561,116 +735,74 @@ function renderAbout() {
     </div>`).join("");
 }
 
-// ---------- render: ranking ----------
-function renderRanking() {
-  const key = currentSeasonKey();
-  const rows = state.users
-    .map(u => ({ u, pts: pointsForUserInSeason(u.id, key), streak: currentStreak(u.id) }))
-    .sort((a, b) => b.pts - a.pts);
-  const rankList = document.getElementById("rankList");
-  rankList.innerHTML = rows.map((r, i) => `
-    <div class="rank-row user-trigger" data-user-id="${r.u.id}">
-      <div class="rank-num">${i + 1}</div>
-      ${avatarHtml(r.u)}
-      <div class="rank-info">
-        <div class="rank-name">${r.u.name}</div>
-        <div class="rank-streak">racha: ${r.streak} días</div>
-      </div>
-      <div class="rank-points">${r.pts}</div>
-    </div>`).join("");
+function renderProfile() {
+  const u = userById(state.currentUser);
+  if (!u) return;
+  const avatarBtn = document.getElementById("profileAvatar");
+  if (u.avatar) {
+    avatarBtn.style.backgroundImage = `url('${u.avatar}')`;
+    avatarBtn.innerHTML = `<span class="avatar-edit-badge">📷</span>`;
+  } else {
+    avatarBtn.style.backgroundImage = "";
+    avatarBtn.innerHTML = `${initials(u.name)}<span class="avatar-edit-badge">📷</span>`;
+  }
+  document.getElementById("profileName").textContent = u.name;
+  document.getElementById("profileSub").textContent = `${totalPointsForUser(u.id)} pts histórico`;
+  document.getElementById("statTotal").textContent = totalPointsForUser(u.id);
+  document.getElementById("statMonth").textContent = pointsForUserInSeason(u.id, currentSeasonKey());
+  document.getElementById("statStreak").textContent = currentStreak(u.id);
 
-  const seasonsSeen = [...new Set(state.posts.map(p => seasonKey(p.ts)))].filter(k => k !== key);
-  const past = document.getElementById("pastSeasons");
-  if (!seasonsSeen.length) {
-    past.innerHTML = `<div class="empty-state">todavía no hay temporadas cerradas.</div>`;
+  const mine = state.posts.filter(p => p.userId === state.currentUser).sort((a, b) => b.ts - a.ts);
+  const list = document.getElementById("timelineList");
+  if (!mine.length) {
+    list.innerHTML = `<div class="empty-state">todavía no hay nada en tu bitácora.</div>`;
     return;
   }
-  past.innerHTML = seasonsSeen.map(k => {
-    const winner = [...state.users].map(u => ({ u, pts: pointsForUserInSeason(u.id, k) })).sort((a, b) => b.pts - a.pts)[0];
-    return `<div class="past-season"><span>${seasonLabelFor(k)}</span><span class="winner">ganó ${winner.u.name} · ${winner.pts} pts</span></div>`;
+  list.innerHTML = mine.map(p => {
+    const d = new Date(p.ts);
+    const cat = catById(p.catId);
+    const approved = isApproved(p);
+    return `
+    <div class="timeline-item">
+      <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
+      <div class="tbody">
+        <div class="ttitle">${cat.name}</div>
+        <div class="rank-streak">${approved ? "aprobado" : statusLabel(p)}</div>
+      </div>
+      <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
+    </div>`;
   }).join("");
 }
 
-// ---------- render: profile public modal ----------
-let activeModalAvatarUrl = null;
-
-function openUserProfileModal(userId) {
-  const u = userById(userId);
-  if (!u) return;
-
-  const modalOverlay = document.getElementById("userModalOverlay");
-  const avatarEl = document.getElementById("modalUserAvatar");
-  const nameEl = document.getElementById("modalUserName");
-  const subEl = document.getElementById("modalUserSub");
-  const bioEl = document.getElementById("modalUserBio");
-
-  nameEl.textContent = u.name;
-  subEl.textContent = `${totalPointsForUser(u.id)} pts histórico`;
-
-  if (u.avatar) {
-    avatarEl.style.backgroundImage = `url('${u.avatar}')`;
-    avatarEl.textContent = "";
-    activeModalAvatarUrl = u.avatar;
-  } else {
-    avatarEl.style.backgroundImage = "";
-    avatarEl.textContent = initials(u.name);
-    activeModalAvatarUrl = null;
+document.getElementById("profileAvatar").addEventListener("click", () => {
+  document.getElementById("avatarInput").click();
+});
+document.getElementById("avatarInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast("subiendo foto de perfil...");
+  try {
+    const dataUrl = await fileToCompressedDataUrl(file, 300, 0.7);
+    await updateDoc(doc(db, "users", state.currentUser), { avatar: dataUrl });
+    toast("listo, esa es tu nueva foto");
+  } catch (err) {
+    toast("no se pudo cambiar la foto, revisa tu conexión");
   }
-
-  if (u.bio && u.bio.trim()) {
-    bioEl.textContent = u.bio;
-    bioEl.classList.remove("empty");
-  } else {
-    bioEl.textContent = "Sin biografía todavía.";
-    bioEl.classList.add("empty");
-  }
-
-  document.getElementById("modalStatTotal").textContent = totalPointsForUser(u.id);
-  document.getElementById("modalStatMonth").textContent = pointsForUserInSeason(u.id, currentSeasonKey());
-  document.getElementById("modalStatStreak").textContent = currentStreak(u.id);
-
-  // Render Analytics in modal
-  const analytics = getUserAnalytics(u.id);
-  document.getElementById("modalAnalytics").innerHTML = renderAnalyticsHtml(analytics);
-
-  const approvedPosts = state.posts
-    .filter(p => p.userId === u.id && isApproved(p))
-    .sort((a, b) => b.ts - a.ts);
-
-  const timelineEl = document.getElementById("modalTimelineList");
-  if (!approvedPosts.length) {
-    timelineEl.innerHTML = `<div class="empty-state">sin actividad aprobada todavía.</div>`;
-  } else {
-    timelineEl.innerHTML = approvedPosts.map(p => {
-      const d = new Date(p.ts);
-      const cat = catById(p.catId);
-      return `
-      <div class="timeline-item">
-        <div class="tdate">${d.getDate()}/${d.getMonth() + 1}</div>
-        <div class="tbody">
-          <div class="ttitle">${cat.name}${p.minutes ? ` · ${p.minutes} min` : ""}</div>
-        </div>
-        <div class="tpts">+${p.pts}</div>
-      </div>`;
-    }).join("");
-  }
-
-  modalOverlay.classList.remove("hidden");
-}
-
-function closeUserProfileModal() {
-  document.getElementById("userModalOverlay").classList.add("hidden");
-}
-
-document.getElementById("userModalClose").addEventListener("click", closeUserProfileModal);
-document.getElementById("userModalOverlay").addEventListener("click", (e) => {
-  if (e.target.id === "userModalOverlay") closeUserProfileModal();
+  e.target.value = "";
 });
 
-document.getElementById("modalUserAvatar").addEventListener("click", () => {
-  if (activeModalAvatarUrl) {
-    openLightbox([activeModalAvatarUrl], 0);
-  }
+document.getElementById("lightbox").addEventListener("click", closeLightbox);
+document.getElementById("lightboxPrev").addEventListener("click", (e) => { e.stopPropagation(); lightboxStep(-1); });
+document.getElementById("lightboxNext").addEventListener("click", (e) => { e.stopPropagation(); lightboxStep(1); });
+
+let touchStartX = null;
+const lightboxEl = document.getElementById("lightbox");
+lightboxEl.addEventListener("touchstart", (e) => { touchStartX = e.touches[0].clientX; });
+lightboxEl.addEventListener("touchend", (e) => {
+  if (touchStartX === null) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 40) lightboxStep(dx > 0 ? -1 : 1);
+  touchStartX = null;
 });
 
 // ---------- migración: recalcular puntos de posts viejos con la nueva regla de duración ----------
@@ -1691,9 +823,7 @@ async function migrateDurationPoints() {
       updates.push(updateDoc(doc(db, "posts", d.id), { pts: newPts, ptsVersion: PTS_RULE_VERSION }));
     });
     if (updates.length) await Promise.all(updates);
-  } catch (err) {
-    /* si falla, no pasa nada grave: se reintenta la próxima vez que alguien entre */
-  }
+  } catch (err) { /* si falla, no pasa nada grave: se reintenta la próxima vez que alguien entre */ }
 }
 
 // ---------- init ----------
