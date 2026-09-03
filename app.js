@@ -47,9 +47,15 @@ const COMBOS = [
   { cats: ["estudio", "ejercicio", "lectura"], mult: 1.4, label: "Día perfecto" },
 ];
 
-const APP_VERSION = "1.16";
+const APP_VERSION = "1.17";
 
 const CHANGELOG = [
+  { v: "1.17", changes: [
+    "ver las estadísticas de tus amigos, no solo la bitácora",
+    "calculadora de minutos: poné hora de inicio y fin al publicar y calcula solo",
+    "los minutos ahora muestran la conversión a horas al lado (ej: 480 min (8 h))",
+    "toca cualquier barra del gráfico de estadísticas para ver el detalle de ese día/período",
+  ] },
   { v: "1.16", changes: ["perfiles públicos: toca el nombre o la foto de cualquiera en el feed o el ranking para ver su perfil y estadísticas", "pestaña de estadísticas en tu perfil: gráfico de puntos por semana/mes/año, tu actividad favorita y si vas subiendo, manteniendo o bajando el ritmo", "arreglado: si publicas dos veces la misma categoría el mismo día, ya no se duplican los puntos base, solo se suma el extra por el tiempo nuevo"] },
   { v: "1.15", changes: ["mínimo de tiempo bajado a 15 min en todas las categorías por duración, con puntaje base más chico (se compensa con los bonus)"] },
   { v: "1.14", changes: ["puntos por tiempo con rendimiento decreciente: los primeros puntos extra son baratos, después cuestan más minutos, para que no compense quedarse horas farmeando", "los posts viejos con minutos se recalculan solos con la regla nueva"] },
@@ -77,6 +83,13 @@ const state = {
 };
 
 function catById(id) { return CATEGORIES.find(c => c.id === id); }
+function formatMinutes(min) {
+  if (!min) return "";
+  if (min < 60) return `${min} min`;
+  const hrs = min / 60;
+  const hrsLabel = Number.isInteger(hrs) ? hrs : hrs.toFixed(1);
+  return `${min} min (${hrsLabel} h)`;
+}
 function ptsForDuration(cat, minutes) {
   if (!cat.minMin) return cat.pts;
   const extraMin = Math.max(0, minutes - cat.minMin);
@@ -400,7 +413,7 @@ function renderFeed() {
             <div class="meta">${timeAgo(p.ts)}</div>
           </div>
         </div>
-        <div class="cat-tag">${cat.name}${p.minutes ? ` · ${p.minutes} min` : ""}</div>
+        <div class="cat-tag">${cat.name}${p.minutes ? ` · ${formatMinutes(p.minutes)}` : ""}</div>
       </div>
       ${photos}
       ${desc}
@@ -618,16 +631,61 @@ function renderDurationField() {
     box.innerHTML = "";
     return;
   }
-    box.innerHTML = `
+  box.innerHTML = `
     <div class="section-title" style="margin-top:20px">¿Cuánto tiempo?</div>
     <input type="number" id="durationInput" class="whoami-input" placeholder="minutos" min="1" style="text-align:left;padding-left:16px">
     <div class="duration-hint" id="durationHint"></div>
+    <button class="calc-toggle-btn" id="calcToggleBtn" type="button">🕑 calcular desde una hora de inicio y fin</button>
+    <div class="time-calc hidden" id="timeCalcBox">
+      <div class="time-calc-row">
+        <div class="time-calc-field">
+          <label>empecé</label>
+          <input type="time" id="timeStart">
+        </div>
+        <div class="time-calc-field">
+          <label>terminé</label>
+          <input type="time" id="timeEnd">
+        </div>
+      </div>
+      <button class="calc-use-btn" id="calcUseBtn" type="button">usar este tiempo</button>
+      <div class="calc-result" id="calcResult"></div>
+    </div>
   `;
   updateDurationHint();
   document.getElementById("durationInput").addEventListener("input", () => {
     updateDurationHint();
     checkPublishReady();
   });
+  document.getElementById("calcToggleBtn").addEventListener("click", () => {
+    document.getElementById("timeCalcBox").classList.toggle("hidden");
+  });
+  document.getElementById("timeStart").addEventListener("input", updateCalcResult);
+  document.getElementById("timeEnd").addEventListener("input", updateCalcResult);
+  document.getElementById("calcUseBtn").addEventListener("click", () => {
+    const mins = calcMinutesBetween();
+    if (mins === null) return;
+    document.getElementById("durationInput").value = mins;
+    updateDurationHint();
+    checkPublishReady();
+    toast(`listo, ${formatMinutes(mins)} cargados`);
+  });
+}
+
+function calcMinutesBetween() {
+  const start = document.getElementById("timeStart").value;
+  const end = document.getElementById("timeEnd").value;
+  if (!start || !end) return null;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins <= 0) mins += 24 * 60; // cruzó medianoche
+  return mins;
+}
+
+function updateCalcResult() {
+  const mins = calcMinutesBetween();
+  const box = document.getElementById("calcResult");
+  box.textContent = mins === null ? "" : `= ${formatMinutes(mins)}`;
 }
 
 function updateDurationHint() {
@@ -640,13 +698,13 @@ function updateDurationHint() {
 
   if (priorMinutes > 0) {
     if (!minutes) {
-      hint.textContent = `ya llevas ${priorMinutes} min hoy en esta categoría. esto se suma como tiempo extra (sin puntos base de nuevo).`;
+      hint.textContent = `ya llevas ${formatMinutes(priorMinutes)} hoy en esta categoría. esto se suma como tiempo extra (sin puntos base de nuevo).`;
       hint.classList.remove("bad");
       return;
     }
     const priorPts = ptsForDuration(cat, priorMinutes);
     const extraPts = Math.max(0, ptsForDuration(cat, priorMinutes + minutes) - priorPts);
-    hint.textContent = `sumando a los ${priorMinutes} min de hoy: +${extraPts} pts extra por estos ${minutes} min.`;
+    hint.textContent = `sumando a los ${formatMinutes(priorMinutes)} de hoy: +${extraPts} pts extra por estos ${formatMinutes(minutes)}.`;
     hint.classList.remove("bad");
     return;
   }
@@ -661,7 +719,7 @@ function updateDurationHint() {
     hint.classList.add("bad");
   } else {
     const total = ptsForDuration(cat, minutes);
-    hint.textContent = `con ${minutes} min te quedan ${total} pts.`;
+    hint.textContent = `con ${formatMinutes(minutes)} te quedan ${total} pts.`;
     hint.classList.remove("bad");
   }
 }
@@ -815,7 +873,7 @@ function renderProfile() {
   }).join("");
 
   if (!document.getElementById("profileStatsTab").classList.contains("hidden")) {
-    renderStatsTab(state.currentUser);
+    renderStatsTab(state.currentUser, OWN_IDS, statsPeriod);
   }
 }
 
@@ -825,6 +883,12 @@ function openFriendProfile(userId) {
   if (userId === state.currentUser) { showScreen("profile"); return; }
   const u = userById(userId);
   if (!u) return;
+  activeFriendId = userId;
+  friendStatsPeriod = "week";
+  document.querySelectorAll("#friendProfileTabs .tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "summary"));
+  document.querySelectorAll("#friendStatsPeriodSwitch .period-btn").forEach(b => b.classList.toggle("active", b.dataset.period === "week"));
+  document.getElementById("friendSummaryTab").classList.remove("hidden");
+  document.getElementById("friendStatsTab").classList.add("hidden");
   screenBeforeFriend = document.querySelector(".screen.active")?.id.replace("screen-", "") || "feed";
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById("screen-friend").classList.add("active");
@@ -875,8 +939,12 @@ function renderFriendProfile(userId) {
 
 document.getElementById("friendBack").addEventListener("click", () => showScreen(screenBeforeFriend));
 
-// ---------- render: estadísticas del perfil ----------
+// ---------- render: estadísticas del perfil (propio y de amigos) ----------
 let statsPeriod = "week";
+let friendStatsPeriod = "week";
+let activeFriendId = null;
+const OWN_IDS = { chart: "statsBarChart", fav: "statsFavCat", trend: "statsTrend" };
+const FRIEND_IDS = { chart: "friendStatsBarChart", fav: "friendStatsFavCat", trend: "friendStatsTrend" };
 
 function bucketsForPeriod(period) {
   const now = new Date();
@@ -886,21 +954,21 @@ function bucketsForPeriod(period) {
       const d = new Date(now); d.setDate(now.getDate() - i);
       const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       const end = start + 86400000;
-      buckets.push({ label: ["D", "L", "M", "M", "J", "V", "S"][d.getDay()], start, end });
+      buckets.push({ label: ["D", "L", "M", "M", "J", "V", "S"][d.getDay()], fullLabel: `${d.getDate()}/${d.getMonth() + 1}`, start, end });
     }
   } else if (period === "month") {
     for (let i = 4; i >= 0; i--) {
       const end = new Date(now); end.setDate(now.getDate() - i * 7);
       const endTs = end.getTime();
       const startTs = endTs - 7 * 86400000;
-      buckets.push({ label: i === 0 ? "hoy" : `-${i}sem`, start: startTs, end: endTs });
+      buckets.push({ label: i === 0 ? "hoy" : `-${i}sem`, fullLabel: i === 0 ? "esta semana" : `hace ${i} semana${i === 1 ? "" : "s"}`, start: startTs, end: endTs });
     }
   } else {
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const start = d.getTime();
       const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
-      buckets.push({ label: MONTH_NAMES[d.getMonth()].slice(0, 3), start, end });
+      buckets.push({ label: MONTH_NAMES[d.getMonth()].slice(0, 3), fullLabel: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`, start, end });
     }
   }
   return buckets;
@@ -913,24 +981,28 @@ function pointsInRange(userId, start, end) {
     .reduce((sum, d) => sum + d.total, 0);
 }
 
-function renderStatsChart(userId) {
-  const buckets = bucketsForPeriod(statsPeriod);
+function renderStatsChart(userId, ids, period) {
+  const buckets = bucketsForPeriod(period);
   const values = buckets.map(b => pointsInRange(userId, b.start, b.end));
   const max = Math.max(1, ...values);
-  document.getElementById("statsBarChart").innerHTML = buckets.map((b, i) => `
-    <div class="bar-col">
+  const chartEl = document.getElementById(ids.chart);
+  chartEl.innerHTML = buckets.map((b, i) => `
+    <div class="bar-col" data-idx="${i}">
       <div class="bar-value">${values[i] || ""}</div>
       <div class="bar-fill" style="height:${Math.max(2, (values[i] / max) * 100)}%"></div>
       <div class="bar-label">${b.label}</div>
     </div>`).join("");
+  chartEl.querySelectorAll(".bar-col").forEach(el => {
+    el.addEventListener("click", () => openDayDetail(userId, buckets[Number(el.dataset.idx)]));
+  });
 }
 
-function renderFavCategory(userId, start, end) {
+function renderFavCategory(userId, start, end, elId) {
   const counts = {};
   state.posts
     .filter(p => p.userId === userId && isApproved(p) && p.ts >= start && p.ts < end)
     .forEach(p => { counts[p.catId] = (counts[p.catId] || 0) + 1; });
-  const box = document.getElementById("statsFavCat");
+  const box = document.getElementById(elId);
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   if (!entries.length) {
     box.innerHTML = `<div class="empty-state">todavía no hay actividad en este período.</div>`;
@@ -948,13 +1020,13 @@ function renderFavCategory(userId, start, end) {
     </div>`;
 }
 
-function renderTrend(userId, currentStart, currentEnd) {
+function renderTrend(userId, currentStart, currentEnd, elId) {
   const span = currentEnd - currentStart;
   const prevStart = currentStart - span;
   const prevEnd = currentStart;
   const current = pointsInRange(userId, currentStart, currentEnd);
   const previous = pointsInRange(userId, prevStart, prevEnd);
-  const box = document.getElementById("statsTrend");
+  const box = document.getElementById(elId);
   let arrowCls = "flat", arrow = "→", text;
   if (previous === 0 && current === 0) {
     text = "todavía no hay suficiente historial para comparar.";
@@ -975,30 +1047,89 @@ function renderTrend(userId, currentStart, currentEnd) {
     </div>`;
 }
 
-function renderStatsTab(userId) {
-  const buckets = bucketsForPeriod(statsPeriod);
-  renderStatsChart(userId);
-  renderFavCategory(userId, buckets[0].start, buckets[buckets.length - 1].end);
-  renderTrend(userId, buckets[0].start, buckets[buckets.length - 1].end);
+function renderStatsTab(userId, ids, period) {
+  const buckets = bucketsForPeriod(period);
+  renderStatsChart(userId, ids, period);
+  renderFavCategory(userId, buckets[0].start, buckets[buckets.length - 1].end, ids.fav);
+  renderTrend(userId, buckets[0].start, buckets[buckets.length - 1].end, ids.trend);
 }
 
-document.querySelectorAll(".tab-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    const tab = btn.dataset.tab;
-    document.getElementById("profileSummaryTab").classList.toggle("hidden", tab !== "summary");
-    document.getElementById("profileStatsTab").classList.toggle("hidden", tab !== "stats");
-    if (tab === "stats") renderStatsTab(state.currentUser);
-  });
+// ---------- modal: detalle de un período/día del gráfico ----------
+function openDayDetail(userId, bucket) {
+  const u = userById(userId);
+  document.getElementById("dayDetailTitle").textContent = `${u ? u.name + " · " : ""}${bucket.fullLabel}`;
+  const posts = state.posts
+    .filter(p => p.userId === userId && p.ts >= bucket.start && p.ts < bucket.end)
+    .sort((a, b) => a.ts - b.ts);
+  const list = document.getElementById("dayDetailList");
+  if (!posts.length) {
+    list.innerHTML = `<div class="empty-state">no hay actividad registrada en este período.</div>`;
+  } else {
+    list.innerHTML = posts.map(p => {
+      const cat = catById(p.catId);
+      const approved = isApproved(p);
+      const d = new Date(p.ts);
+      const hora = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      return `
+      <div class="day-detail-item">
+        <div class="tbody">
+          <div class="ttitle">${cat.name}</div>
+          <div class="rank-streak">${hora}${p.minutes ? ` · ${formatMinutes(p.minutes)}` : ""} · ${approved ? "aprobado" : statusLabel(p)}</div>
+        </div>
+        <div class="tpts">${approved ? "+" + p.pts : "—"}</div>
+      </div>`;
+    }).join("");
+    const totalPts = posts.filter(isApproved).reduce((s, p) => s + p.pts, 0);
+    list.innerHTML += `<div class="day-detail-total">total del período: <strong>${totalPts} pts</strong></div>`;
+  }
+  document.getElementById("dayDetail").classList.remove("hidden");
+}
+function closeDayDetail() {
+  document.getElementById("dayDetail").classList.add("hidden");
+}
+document.getElementById("dayDetailClose").addEventListener("click", closeDayDetail);
+document.getElementById("dayDetail").addEventListener("click", (e) => {
+  if (e.target.id === "dayDetail") closeDayDetail();
 });
-document.querySelectorAll(".period-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    statsPeriod = btn.dataset.period;
-    renderStatsTab(state.currentUser);
-  });
+
+// ---------- tabs y períodos: perfil propio ----------
+document.getElementById("profileTabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab-btn");
+  if (!btn) return;
+  document.querySelectorAll("#profileTabs .tab-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  const tab = btn.dataset.tab;
+  document.getElementById("profileSummaryTab").classList.toggle("hidden", tab !== "summary");
+  document.getElementById("profileStatsTab").classList.toggle("hidden", tab !== "stats");
+  if (tab === "stats") renderStatsTab(state.currentUser, OWN_IDS, statsPeriod);
+});
+document.getElementById("statsPeriodSwitch").addEventListener("click", (e) => {
+  const btn = e.target.closest(".period-btn");
+  if (!btn) return;
+  document.querySelectorAll("#statsPeriodSwitch .period-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  statsPeriod = btn.dataset.period;
+  renderStatsTab(state.currentUser, OWN_IDS, statsPeriod);
+});
+
+// ---------- tabs y períodos: perfil de amigos ----------
+document.getElementById("friendProfileTabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab-btn");
+  if (!btn || !activeFriendId) return;
+  document.querySelectorAll("#friendProfileTabs .tab-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  const tab = btn.dataset.tab;
+  document.getElementById("friendSummaryTab").classList.toggle("hidden", tab !== "summary");
+  document.getElementById("friendStatsTab").classList.toggle("hidden", tab !== "stats");
+  if (tab === "stats") renderStatsTab(activeFriendId, FRIEND_IDS, friendStatsPeriod);
+});
+document.getElementById("friendStatsPeriodSwitch").addEventListener("click", (e) => {
+  const btn = e.target.closest(".period-btn");
+  if (!btn || !activeFriendId) return;
+  document.querySelectorAll("#friendStatsPeriodSwitch .period-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  friendStatsPeriod = btn.dataset.period;
+  renderStatsTab(activeFriendId, FRIEND_IDS, friendStatsPeriod);
 });
 
 document.getElementById("profileAvatar").addEventListener("click", () => {
